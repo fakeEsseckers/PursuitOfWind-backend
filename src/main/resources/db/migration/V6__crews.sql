@@ -22,9 +22,12 @@ create table crews (
 );
 
 -- Who is in a crew, and since when (CrewMember). position is the order of joining: members are listed in it.
+--
+-- What is a user's alone goes when the user goes (their profile, their tokens). What others see of them does not: a
+-- member cannot leave a crew without the crew being told, so a user who is in one is not deleted from under it.
 create table crew_members (
     crew_id text collate "C" not null references crews (id) on delete cascade,
-    user_id text not null references users (id) on delete cascade,
+    user_id text not null references users (id),
     role text not null check (role in ('OWNER', 'MEMBER')),
     joined_at timestamptz not null,
     position bigint generated always as identity,
