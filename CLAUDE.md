@@ -33,20 +33,21 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 | --- | --- |
 | `Main.kt`, `ServerConfig.kt` | the start, and the configuration read from environment variables |
 | `Application.kt` | `Application.module()`: what every route shares, and the routes |
-| `api/` | the HTTP side of the contract: problem bodies now, routes as they arrive |
-| `db/` | `Database` (connection pool, migration runner) and `DatabaseConfig` (`DATABASE_URL`) |
+| `api/` | the HTTP side of the contract: `open` / `signedIn` register a handler for an `ApiRoute`, `respondJson` answers with a DTO, `ProblemException` and `respondProblem` answer failures, one `*Routes.kt` per tag of the contract |
+| `auth/` | `Sessions` (sign-in, token pairs, who an access token belongs to) and `Credentials` (tokens, ids, hashes) |
+| `db/` | `Database` (connection pool, migration runner, `transaction { handle -> }` and `read { handle -> }` for queries) and `DatabaseConfig` (`DATABASE_URL`) |
 | `src/main/resources/db/migration` | the schema: SQL migrations, applied in order at start |
 | `src/test/kotlin` | tests through `testApplication` (`serverTest`), real HTTP handling in memory on a real PostgreSQL (`TestPostgres`) |
 
 ## Hard rules
 
-1. Contract first, and the contract lives in the client repository. The server never answers with a route, field, status or problem code that `api/openapi.yaml` of the pinned client release does not have. A change to the API starts there: contract, DTOs, fake backend, a client release, then this server.
+1. Contract first, and the contract lives in the client repository. The server never answers with a route, field, status or problem code that `api/openapi.yaml` of the pinned client release does not have. A change to the API starts there: contract, DTOs, fake backend, a client release, then this server. A handler is registered for an `ApiRoute` (`open`, `signedIn`), never for a path written by hand, and reads and writes the contract's DTOs.
 2. Verdicts, windows and kite sizes come from the `windengine` artifact. No decision rule is written or adjusted here.
-3. JSON is `ContractJson`. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s, with the status and title the client's in-app fake backend uses for the same case; an unexpected failure tells the client nothing about the inside.
+3. JSON is `ContractJson`. A handler answers through `respondJson`, never `call.respond`, which would ask the `Accept` header after the work is done. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s, with the status and title the client's in-app fake backend uses for the same case; an unexpected failure tells the client nothing about the inside.
 4. No secrets in the repository or the image. Tokens, passwords and addresses come from environment variables or CI secrets.
-5. Configuration is read once at start through `ServerConfig`; a wrong value stops the start and names the variable.
+5. Configuration is read once at start through `ServerConfig`; a wrong value stops the start and names the variable. The time comes only from the `Clock` given to `module`, so a test can set it.
 6. What the API does is tested through HTTP (`serverTest`), not around it, and on a real PostgreSQL (`TestPostgres`): no in-memory substitute, no mocked repository. Configuration and the database wrapper have tests of their own.
-7. The schema changes only through SQL migrations in `src/main/resources/db/migration`, in the server's own schema `pursuitofwind`. A migration that has reached `main` is never edited; a new one is added. A credential (an installation id, a token) is stored as its hash, never as itself.
+7. Queries are SQL as written, run through `Database.transaction` or `Database.read` (JDBI); rows are mapped by hand (ADR 0004). The schema changes only through SQL migrations in `src/main/resources/db/migration`, in the server's own schema `pursuitofwind`. A migration that has reached `main` is never edited; a new one is added. A credential (an installation id, a token) is stored as its hash, never as itself.
 8. Verify library APIs and versions with official docs before using them. Versions live in `gradle/libs.versions.toml`; a library shared with the client (Ktor, kotlinx.serialization) keeps the client's version.
 9. Kite sizing and verdicts are decision support, not safety advice.
 

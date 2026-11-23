@@ -40,7 +40,7 @@ class ApplicationTest {
 
     @Test
     fun `health says so when the database is gone`() =
-        serverTest { database ->
+        serverTest {
             TestPostgres.drop(database)
 
             val response = client.get("/health")

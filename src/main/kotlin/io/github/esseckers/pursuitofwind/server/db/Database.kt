@@ -5,6 +5,9 @@ import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.flywaydb.core.Flyway
+import org.jdbi.v3.core.Handle
+import org.jdbi.v3.core.Jdbi
+import org.jdbi.v3.postgres.PostgresPlugin
 import org.slf4j.LoggerFactory
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -46,6 +49,8 @@ internal class Database(
             },
         )
 
+    private val jdbi = Jdbi.create(pool).installPlugin(PostgresPlugin())
+
     /** How [isUp] connects: as the pool does, and giving up soon. */
     private val probe =
         Properties().apply {
@@ -67,6 +72,15 @@ internal class Database(
             .load()
             .migrate()
     }
+
+    /**
+     * Runs [block] in one transaction, off the request threads. What it returns is the result; an exception rolls
+     * everything back and goes on to the caller. Queries are SQL as written, through the [Handle] (ADR 0004).
+     */
+    suspend fun <T> transaction(block: (Handle) -> T): T = withContext(Dispatchers.IO) { jdbi.inTransaction<T, Exception> { block(it) } }
+
+    /** Runs [block] on a pooled connection with no transaction around it: for one statement that only reads. */
+    suspend fun <T> read(block: (Handle) -> T): T = withContext(Dispatchers.IO) { jdbi.withHandle<T, Exception> { block(it) } }
 
     /**
      * Whether the database answers right now. It asks over a connection of its own, not one from the pool: a pool
