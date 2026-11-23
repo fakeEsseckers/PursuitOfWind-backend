@@ -83,6 +83,11 @@ jobs:
           docker logs server
           exit 1
 
+      # Installed in a step of its own, so that nothing an install script runs sees the token.
+      - name: Install the Railway CLI
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_RAILWAY_TOKEN == 'true'
+        run: npm install --global @railway/cli@5.75.0
+
       - name: Deploy to the staging
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_RAILWAY_TOKEN == 'true'
         env:
@@ -93,7 +98,6 @@ jobs:
           mkdir -p deploy/build/install
           cp Dockerfile deploy/
           cp -r build/install/server deploy/build/install/
-          npm install --global @railway/cli@5.75.0
           # --no-gitignore: the repository ignores build/, which is exactly what the image needs.
           railway up deploy --path-as-root --no-gitignore --ci --service "$RAILWAY_SERVICE"
 
