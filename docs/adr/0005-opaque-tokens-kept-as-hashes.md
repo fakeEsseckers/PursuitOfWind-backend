@@ -18,13 +18,15 @@ The app's in-app fake backend already implements this, and the app's token handl
 - **A refresh token left unused for 90 days stops working.** The app then signs in again, which the contract already asks of it after a failed refresh.
 - **An installation id is compared as a UUID**, so its letter case does not matter, and one installation is one user for good.
 - **A call without a working token is `401 UNAUTHORIZED` with a Bearer challenge**: `invalid_token` when a token was sent, a bare challenge when none was.
-- **Tokens that no longer work are removed when their user gets new ones.**
+- **The token tables are kept small where tokens are issued, not by a job.** Whenever anyone gets tokens, that user keeps only their five newest of each kind (an app holds one pair at a time, so a client that signs in over and over fills nothing), and a batch of expired tokens, whoever's, is removed.
+- **Answers are JSON whatever the call says it accepts.** The contract offers nothing else, and a call that has already used up a refresh token must not then fail over an `Accept` header.
 
 ## Alternatives considered
 
 - **JWT access tokens** — no database read per call, at the price of a signing key to keep and rotate, and tokens that cannot be withdrawn before they expire. One indexed read per call costs nothing at this size.
 - **A sign-in that cancels earlier tokens** — tidier, but an app that signs in twice at once (two requests racing after a failed refresh) would cancel its own first answer, and the fake does not do it.
-- **Refresh tokens that never expire** — as in the fake, where the process is the lifetime; on a server they would accumulate for installations that are gone.
+- **Refresh tokens that never expire** — as in the fake, where the process is the lifetime; on a server the tokens of installations that are gone would work, and stay, forever.
+- **A scheduled job that removes expired tokens** — the server has no scheduler yet, and removal at issue needs none. Tokens expire and are removed at the pace tokens are issued, which is the pace the tables grow.
 - **Detecting reuse of a rotated refresh token and cancelling the whole family** — the right answer to a stolen token once accounts are worth stealing; an anonymous account can be re-entered with the installation id anyway.
 
 ## Consequences
@@ -32,5 +34,6 @@ The app's in-app fake backend already implements this, and the app's token handl
 - Positive: a copy of the database signs nobody in.
 - Positive: a token is withdrawn by deleting a row.
 - Negative: every authenticated call reads the database once.
+- Negative: an app that somehow held more than five live pairs would find its oldest ones withdrawn.
 - Negative: an installation id that leaks is the account. That is the contract's design; the app keeps the id in the platform's secure storage.
 - Revisit when: accounts gain an identity beyond the installation (email, sign-in with a provider), or the read per call shows in measurements.

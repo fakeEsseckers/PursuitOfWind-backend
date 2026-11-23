@@ -12,7 +12,7 @@ The owner of the project writes Kotlin for mobile and reads SQL in Room every da
 ## Decision
 
 - **Queries are SQL strings**, next to the code that uses them, with named parameters.
-- **JDBI runs them.** `Database.transaction { handle -> … }` runs a block in one transaction on a pooled connection, off the request threads; an exception rolls it back. JDBI binds parameters, including UUIDs, byte arrays and timestamps, and maps results.
+- **JDBI runs them.** `Database.transaction { handle -> … }` runs a block in one transaction on a pooled connection, off the request threads; an exception rolls it back. `Database.read { handle -> … }` runs one reading statement without a transaction around it. JDBI binds parameters, including UUIDs, byte arrays and timestamps, and maps results.
 - **Rows are mapped by hand**, column by column, in the function that runs the query. No reflection, no annotations, no mapping of whole objects.
 - **What is true in the database is checked there**: uniqueness by a constraint, "use once" by a `delete … returning`. A check in Kotlin before the write would race.
 

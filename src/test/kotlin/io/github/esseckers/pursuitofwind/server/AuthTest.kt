@@ -69,6 +69,9 @@ class AuthTest {
     private suspend fun TestServer.tokens(installationId: String = phone): AuthTokensDto =
         signIn(installationId).json(AuthTokensDto.serializer())
 
+    private suspend fun TestServer.whoAmIWith(authorization: String): HttpResponse =
+        client.get(ApiRoute.GET_PROFILE.path) { header(HttpHeaders.Authorization, authorization) }
+
     private suspend fun TestServer.whoAmI(accessToken: String?): HttpResponse =
         client.get(ApiRoute.GET_PROFILE.path) { if (accessToken != null) bearerAuth(accessToken) }
 
@@ -188,6 +191,39 @@ class AuthTest {
         }
 
     @Test
+    fun `a refresh token still works a second before its ninety days are over`() =
+        serverTest {
+            val first = tokens()
+
+            clock.now += 90.days - 1.seconds
+
+            assertEquals(HttpStatusCode.OK, refresh(first.refreshToken).status)
+        }
+
+    @Test
+    fun `tokens are handed out whatever the call says it accepts`() =
+        serverTest {
+            val signedIn =
+                client.post(ApiRoute.SIGN_IN_ANONYMOUSLY.path) {
+                    contentType(ContentType.Application.Json)
+                    header(HttpHeaders.Accept, "text/html")
+                    setBody("""{"installationId":"$phone","platform":"ANDROID"}""")
+                }
+            assertEquals(HttpStatusCode.Created, signedIn.status)
+            val first = signedIn.json(AuthTokensDto.serializer())
+
+            val refreshed =
+                client.post(ApiRoute.REFRESH_TOKENS.path) {
+                    contentType(ContentType.Application.Json)
+                    header(HttpHeaders.Accept, "text/html")
+                    setBody("""{"refreshToken":"${first.refreshToken}"}""")
+                }
+
+            assertEquals(HttpStatusCode.OK, refreshed.status)
+            assertEquals(first.userId, refreshed.json(AuthTokensDto.serializer()).userId)
+        }
+
+    @Test
     fun `an operation for signed-in users is told who calls, and refuses a call without a token that works`() =
         serverTest(whoAmI) {
             val alex = tokens(phone)
@@ -195,16 +231,14 @@ class AuthTest {
 
             assertEquals(alex.userId, whoAmI(alex.accessToken).bodyAsText())
             assertEquals(dana.userId, whoAmI(dana.accessToken).bodyAsText())
-            assertEquals(
-                alex.userId,
-                client
-                    .get(ApiRoute.GET_PROFILE.path) {
-                        header(HttpHeaders.Authorization, "bearer ${alex.accessToken}")
-                    }.bodyAsText(),
-            )
+            assertEquals(alex.userId, whoAmIWith("bearer ${alex.accessToken}").bodyAsText())
+            assertEquals(alex.userId, whoAmIWith("Bearer   ${alex.accessToken} ").bodyAsText())
 
+            val invalidToken = """Bearer error="invalid_token""""
             whoAmI(accessToken = null).assertUnauthorized("Bearer")
-            client.get(ApiRoute.GET_PROFILE.path) { header(HttpHeaders.Authorization, "Basic YTpi") }.assertUnauthorized("Bearer")
+            whoAmIWith("Basic YTpi").assertUnauthorized("Bearer")
+            whoAmIWith("Bearer ").assertUnauthorized(invalidToken)
+            whoAmIWith("Bearer ${alex.accessToken} x").assertUnauthorized(invalidToken)
             whoAmI("at_nobody-issued-this").assertUnauthorized("""Bearer error="invalid_token"""")
             whoAmI(alex.refreshToken).assertUnauthorized("""Bearer error="invalid_token"""")
         }
@@ -243,14 +277,39 @@ class AuthTest {
         }
 
     @Test
-    fun `tokens that no longer work are dropped when their user gets new ones`() =
+    fun `tokens that have expired are removed when anyone gets new ones`() =
         serverTest {
-            tokens()
+            tokens(phone)
             clock.now += 91.days
 
-            tokens()
+            val dana = tokens(tablet)
 
-            assertEquals(listOf("1"), TestPostgres.strings(database, "select count(*) from ${Database.SCHEMA}.access_tokens"))
-            assertEquals(listOf("1"), TestPostgres.strings(database, "select count(*) from ${Database.SCHEMA}.refresh_tokens"))
+            assertEquals(
+                listOf(sha256(dana.accessToken)),
+                TestPostgres.strings(database, "select encode(token_hash, 'hex') from ${Database.SCHEMA}.access_tokens"),
+            )
+            assertEquals(
+                listOf(sha256(dana.refreshToken)),
+                TestPostgres.strings(database, "select encode(token_hash, 'hex') from ${Database.SCHEMA}.refresh_tokens"),
+            )
+        }
+
+    @Test
+    fun `a user keeps only the newest few pairs, so signing in over and over fills nothing`() =
+        serverTest(whoAmI) {
+            val pairs = List(Sessions.KEPT_PER_USER + 2) { tokens() }
+
+            assertEquals(
+                listOf(Sessions.KEPT_PER_USER.toString()),
+                TestPostgres.strings(database, "select count(*) from ${Database.SCHEMA}.refresh_tokens"),
+            )
+            assertEquals(
+                listOf(Sessions.KEPT_PER_USER.toString()),
+                TestPostgres.strings(database, "select count(*) from ${Database.SCHEMA}.access_tokens"),
+            )
+            whoAmI(pairs.first().accessToken).assertUnauthorized("""Bearer error="invalid_token"""")
+            refresh(pairs[1].refreshToken).assertUnauthorized("""Bearer error="invalid_token"""")
+            assertEquals(pairs.last().userId, whoAmI(pairs.last().accessToken).bodyAsText())
+            assertEquals(HttpStatusCode.OK, refresh(pairs[2].refreshToken).status)
         }
 }

@@ -79,6 +79,9 @@ internal class Database(
      */
     suspend fun <T> transaction(block: (Handle) -> T): T = withContext(Dispatchers.IO) { jdbi.inTransaction<T, Exception> { block(it) } }
 
+    /** Runs [block] on a pooled connection with no transaction around it: for one statement that only reads. */
+    suspend fun <T> read(block: (Handle) -> T): T = withContext(Dispatchers.IO) { jdbi.withHandle<T, Exception> { block(it) } }
+
     /**
      * Whether the database answers right now. It asks over a connection of its own, not one from the pool: a pool
      * that is busy serving requests is not a database that is down.

@@ -39,12 +39,12 @@ internal fun Route.signedIn(
     }
 }
 
-/** The token of `Authorization: Bearer <token>`, or null when the call carries no such header. */
+/**
+ * The token of `Authorization: Bearer <token>`, or null when the call carries no Bearer credential at all. A Bearer
+ * header with nothing after it is a token that was sent and does not work, as the app's in-app backend treats it.
+ */
 private fun ApplicationCall.bearerToken(): String? {
     val header = request.headers[HttpHeaders.Authorization] ?: return null
-    val scheme = header.substringBefore(' ')
-    return header.substringAfter(' ', missingDelimiterValue = "").trim().takeIf {
-        scheme.equals("Bearer", ignoreCase = true) &&
-            it.isNotEmpty()
-    }
+    val isBearer = header.substringBefore(' ').equals("Bearer", ignoreCase = true)
+    return if (isBearer) header.substringAfter(' ', missingDelimiterValue = "").trim() else null
 }

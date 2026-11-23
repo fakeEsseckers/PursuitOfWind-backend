@@ -20,6 +20,8 @@ import kotlin.time.toJavaInstant
  *   that issues the next pair, so two calls with one token cannot both succeed.
  * - A refresh token nobody used for [REFRESH_TOKEN_LIFETIME] stops working. The app then signs in again with its
  *   installation id, as the contract tells it to after any failed refresh.
+ * - The tables stay small without a job of their own: whenever anyone gets tokens, that user keeps only their
+ *   newest [KEPT_PER_USER] of each kind, and a batch of tokens that have expired, whoever's, is removed.
  */
 internal class Sessions(
     private val database: Database,
@@ -78,7 +80,7 @@ internal class Sessions(
     /** The id of the user [accessToken] was issued to, while it has not expired. */
     suspend fun userOf(accessToken: String): String? {
         val now = now()
-        return database.transaction { handle ->
+        return database.read { handle ->
             handle
                 .createQuery("select user_id from access_tokens where token_hash = :token and expires_at > :now")
                 .bind("token", Credentials.hash(accessToken))
@@ -104,37 +106,71 @@ internal class Sessions(
                 refreshToken = Credentials.newToken("rt"),
                 accessTokenExpiresAt = now + ACCESS_TOKEN_LIFETIME,
             )
-        // The moment a user gets new tokens is the moment to drop their old ones that no longer work.
-        for (table in listOf("access_tokens", "refresh_tokens")) {
+
+        fun insert(
+            table: String,
+            token: String,
+            expiresAt: Instant,
+        ) {
             handle
-                .createUpdate("delete from $table where user_id = :user and expires_at <= :now")
+                .createUpdate("insert into $table (token_hash, user_id, issued_at, expires_at) values (:token, :user, :issued, :expires)")
+                .bind("token", Credentials.hash(token))
                 .bind("user", userId)
-                .bind("now", now.toJavaInstant())
+                .bind("issued", now.toJavaInstant())
+                .bind("expires", expiresAt.toJavaInstant())
                 .execute()
         }
-        insert(handle, "access_tokens", tokens.accessToken, userId, tokens.accessTokenExpiresAt)
-        insert(handle, "refresh_tokens", tokens.refreshToken, userId, now + REFRESH_TOKEN_LIFETIME)
+        insert("access_tokens", tokens.accessToken, tokens.accessTokenExpiresAt)
+        insert("refresh_tokens", tokens.refreshToken, now + REFRESH_TOKEN_LIFETIME)
+        for (table in listOf("access_tokens", "refresh_tokens")) {
+            keepNewest(handle, table, userId)
+            removeExpired(handle, table, now)
+        }
         return tokens
     }
 
-    private fun insert(
+    /** An app holds one pair at a time; a client that signs in over and over must not fill the table. */
+    private fun keepNewest(
         handle: Handle,
         table: String,
-        token: String,
         userId: String,
-        expiresAt: Instant,
     ) {
         handle
-            .createUpdate("insert into $table (token_hash, user_id, expires_at) values (:token, :user, :expires)")
-            .bind("token", Credentials.hash(token))
-            .bind("user", userId)
-            .bind("expires", expiresAt.toJavaInstant())
+            .createUpdate(
+                """
+                delete from $table
+                where user_id = :user
+                  and id not in (select id from $table where user_id = :user order by id desc limit :kept)
+                """,
+            ).bind("user", userId)
+            .bind("kept", KEPT_PER_USER)
+            .execute()
+    }
+
+    /** Rows locked by someone else's removal are skipped, so two of these never wait for each other. */
+    private fun removeExpired(
+        handle: Handle,
+        table: String,
+        now: Instant,
+    ) {
+        handle
+            .createUpdate(
+                """
+                delete from $table
+                where token_hash in (
+                    select token_hash from $table where expires_at <= :now limit :batch for update skip locked
+                )
+                """,
+            ).bind("now", now.toJavaInstant())
+            .bind("batch", EXPIRED_REMOVED_AT_ONCE)
             .execute()
     }
 
     companion object {
         val ACCESS_TOKEN_LIFETIME = 1.hours
         val REFRESH_TOKEN_LIFETIME = 90.days
+        const val KEPT_PER_USER = 5
+        private const val EXPIRED_REMOVED_AT_ONCE = 100
     }
 }
 
