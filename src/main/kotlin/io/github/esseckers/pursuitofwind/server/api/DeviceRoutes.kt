@@ -12,8 +12,9 @@ import io.ktor.server.routing.Route
 internal fun Route.deviceRoutes(api: Api) {
     changing(api, ApiRoute.PUT_PUSH_TOKEN) {
         val device = body(PushTokenRequestDto.serializer())
-        // The contract asks for one character at least. U+0000 is in no push service's token, and PostgreSQL keeps none.
-        check422(device.token.isNotEmpty() && '\u0000' !in device.token) { "token must not be empty." }
+        check422(device.token.isNotEmpty()) { "token must not be empty." }
+        // In no push service's token, and PostgreSQL keeps none in a text.
+        check422('\u0000' !in device.token) { "token must not contain U+0000." }
         PushTokens.put(handle, userId, device, now)
         Answer.noContent
     }

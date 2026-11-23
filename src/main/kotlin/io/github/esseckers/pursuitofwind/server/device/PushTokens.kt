@@ -7,7 +7,10 @@ import kotlin.time.toJavaInstant
 
 /** The push token of each user's device, in the database. */
 internal object PushTokens {
-    /** Keeps [device] as where [userId] is reached, in place of what was kept for them. */
+    /**
+     * Keeps [device] as where [userId] is reached, in place of what was kept for them, unless that came with a later
+     * call: of two calls that cross, the one made last stays, whichever is written last.
+     */
     fun put(
         handle: Handle,
         userId: String,
@@ -20,6 +23,7 @@ internal object PushTokens {
                 insert into push_tokens (user_id, platform, token, updated_at) values (:user, :platform, :token, :now)
                 on conflict (user_id) do update
                 set platform = excluded.platform, token = excluded.token, updated_at = excluded.updated_at
+                where push_tokens.updated_at <= excluded.updated_at
                 """,
             ).bind("user", userId)
             .bind("platform", device.platform.name)

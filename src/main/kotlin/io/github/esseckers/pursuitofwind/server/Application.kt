@@ -40,8 +40,8 @@ import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * The server as an application: what every route shares, and the routes. The API's routes arrive one slice of the
- * contract at a time; until a route exists it answers `404` like any other unknown path.
+ * The server as an application: what every route shares, and the routes, one for every operation of the contract. A
+ * path the contract does not have answers `404`.
  *
  * [api] is what the handlers share: the database, the sessions, and the clock, which is the server's only source of
  * the time, so that a test can say what time it is.

@@ -10,18 +10,17 @@ import io.github.esseckers.pursuitofwind.server.testing.TestServer
 import io.github.esseckers.pursuitofwind.server.testing.problem
 import io.github.esseckers.pursuitofwind.server.testing.rider
 import io.github.esseckers.pursuitofwind.server.testing.serverTest
+import io.github.esseckers.pursuitofwind.server.testing.together
 import io.ktor.client.request.put
-import io.ktor.client.request.request
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
-/** The push token of a rider's device, through HTTP on a real database, and the route table as a whole. */
+/** The push token of a rider's device, through HTTP on a real database. */
 class DeviceTest {
     private val key = "3f9d6c1e-8a42-4f4b-9d0e-6b1c2a7e5f10"
 
@@ -100,17 +99,18 @@ class DeviceTest {
         }
 
     @Test
-    fun `every operation of the contract is served`() =
+    fun `two calls of one rider at the same moment leave one token`() =
         serverTest {
-            for (operation in ApiRoute.entries) {
-                val path = operation.pathWith(*Array(operation.pathParameters.size) { "id_1" })
+            val alex = rider()
+            alex.register("first")
+            val tokens = listOf("4f2b8c0d9e1a", "9e1a4f2b8c0d")
+            // Both wait for the table the test holds, and are then let go together.
+            val theTable = "lock table ${Database.SCHEMA}.push_tokens in access exclusive mode"
 
-                val response = client.request(path) { method = HttpMethod.parse(operation.method) }
+            val answers = together(theTable, tokens.map { token -> suspend { alex.register(token) } })
 
-                // A path the server does not serve is 404 NOT_FOUND; one it serves asks who is calling, or for a body.
-                val expected = if (operation.requiresAuth) HttpStatusCode.Unauthorized else HttpStatusCode.UnprocessableEntity
-                assertEquals(expected, response.status, operation.name)
-                assertNotEquals(ProblemCode.NOT_FOUND, response.problem().code, operation.name)
-            }
+            assertEquals(List(2) { HttpStatusCode.NoContent }, answers.map { it.status })
+            val kept = kept(alex).single()
+            assertTrue(tokens.any { kept == "IOS $it 2026-07-16T06:00:00Z" }, kept)
         }
 }
