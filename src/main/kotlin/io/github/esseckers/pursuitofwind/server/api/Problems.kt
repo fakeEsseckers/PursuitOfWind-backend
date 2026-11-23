@@ -53,10 +53,6 @@ internal fun unavailable(retryAfterSeconds: Int = 1) =
 /** `404 NOT_FOUND`: [what], named by the id the call gave, is not there. */
 internal fun notFound(what: String) = ProblemException(HttpStatusCode.NotFound, ProblemCode.NOT_FOUND, "Not found", "$what does not exist.")
 
-/** `403 NOT_THE_CREATOR`: the spot is someone else's. */
-internal fun notTheCreator() =
-    ProblemException(HttpStatusCode.Forbidden, ProblemCode.NOT_THE_CREATOR, "Only the rider who added this spot can change it")
-
 /** Fails with `422 VALIDATION_FAILED` and [detail] unless [condition] holds. */
 internal inline fun check422(
     condition: Boolean,

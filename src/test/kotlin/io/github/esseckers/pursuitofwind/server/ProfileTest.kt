@@ -21,6 +21,7 @@ import io.github.esseckers.pursuitofwind.server.testing.signedInAgain
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -28,6 +29,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -295,20 +297,29 @@ class ProfileTest {
     fun `a change that broke inside is not kept, and runs again when it is sent again`() {
         var calls = 0
         val breaksOnce: Application.(Api) -> Unit = { api ->
+            // Beside the server's own routes: every operation of the contract that changes something is served.
             routing {
-                changing(api, ApiRoute.CREATE_CREW) {
-                    calls++
-                    check(calls > 1) { "the first call breaks" }
-                    Answer.noContent
+                route("/breaking") {
+                    changing(api, ApiRoute.CREATE_CREW) {
+                        calls++
+                        check(calls > 1) { "the first call breaks" }
+                        Answer.noContent
+                    }
                 }
             }
         }
         serverTest(breaksOnce) {
             val rider = rider()
 
-            val broken = rider.call(ApiRoute.CREATE_CREW, "{}", firstKey)
-            val again = rider.call(ApiRoute.CREATE_CREW, "{}", firstKey)
-            val replayed = rider.call(ApiRoute.CREATE_CREW, "{}", firstKey)
+            suspend fun call() =
+                client.post("/breaking" + ApiRoute.CREATE_CREW.path) {
+                    bearerAuth(rider.tokens.accessToken)
+                    header(ApiHeaders.IDEMPOTENCY_KEY, firstKey)
+                    setBody("{}")
+                }
+            val broken = call()
+            val again = call()
+            val replayed = call()
 
             assertEquals(HttpStatusCode.InternalServerError, broken.status)
             assertEquals(HttpStatusCode.NoContent, again.status)

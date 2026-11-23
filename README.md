@@ -8,7 +8,7 @@ It implements the API the app already speaks. The contract (`api/openapi.yaml`),
 
 ## Status
 
-The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), keeps crews that riders create and join by invite code, with their members and their feed of events (`/v1/crews`, `/v1/me/crews`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
 
 ## Weather data
 
@@ -106,6 +106,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 | `src/main/kotlin/.../server/auth` | who a call is made as: sign-in, token pairs, the check of an access token |
 | `src/main/kotlin/.../server/profile` | the rider's profile: its rules and its table |
 | `src/main/kotlin/.../server/spot` | the catalog of spots and the spots a rider follows: rules and tables |
+| `src/main/kotlin/.../server/crew` | crews, their members and the feed of what happened in a crew |
 | `src/main/kotlin/.../server/forecast` | the source of forecasts (Open-Meteo) and the forecast kept per place |
 | `src/main/kotlin/.../server/db` | the connection pool and the migration runner |
 | `src/main/resources/db/migration` | the schema, as SQL migrations applied in order |
@@ -122,7 +123,8 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 - [x] Profile, with `Idempotency-Key` for calls that change something
 - [x] Spots: the catalog and a rider's own list
 - [x] Real forecasts: Open-Meteo adapter, a forecast kept per place, the endpoint
-- [ ] Crews, rides, seats, the event feed
+- [x] Crews: creating one, joining by invite code, members, the event feed
+- [ ] Rides and seats
 - [ ] Push token intake
 - [ ] Staging deployment, contract tests against it, debug builds of the app on it
 - [ ] Production environment; server-side window evaluation and push notifications
