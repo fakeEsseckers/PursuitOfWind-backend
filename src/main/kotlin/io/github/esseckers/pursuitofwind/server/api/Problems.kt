@@ -1,5 +1,6 @@
 package io.github.esseckers.pursuitofwind.server.api
 
+import io.github.esseckers.pursuitofwind.contract.ApiHeaders
 import io.github.esseckers.pursuitofwind.contract.ContractJson
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.contract.ProblemDto
@@ -36,6 +37,18 @@ internal fun invalid(
     detail: String,
     cause: Throwable? = null,
 ) = ProblemException(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED, "Request is not valid", detail, cause = cause)
+
+/**
+ * `503 SERVICE_UNAVAILABLE` with `Retry-After`: something the server needs is not there at the moment, through no
+ * fault of the call, which may come again.
+ */
+internal fun unavailable() =
+    ProblemException(
+        HttpStatusCode.ServiceUnavailable,
+        ProblemCode.SERVICE_UNAVAILABLE,
+        "Service temporarily unavailable",
+        headers = mapOf(ApiHeaders.RETRY_AFTER to "1"),
+    )
 
 /** `404 NOT_FOUND`: [what], named by the id the call gave, is not there. */
 internal fun notFound(what: String) = ProblemException(HttpStatusCode.NotFound, ProblemCode.NOT_FOUND, "Not found", "$what does not exist.")

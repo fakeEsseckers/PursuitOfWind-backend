@@ -8,7 +8,11 @@ It implements the API the app already speaks. The contract (`api/openapi.yaml`),
 
 ## Status
 
-The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+
+## Weather data
+
+Forecasts come from [Open-Meteo](https://open-meteo.com/) ([ADR 0007](docs/adr/0007-forecasts-from-open-meteo-kept-per-spot.md)): the wind of the ECMWF, ICON and GFS models, and precipitation, temperature and sun times for each spot. Weather data by Open-Meteo.com, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The server uses its free, non-commercial tier.
 
 ## Run it
 
@@ -100,6 +104,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 | `src/main/kotlin/.../server/auth` | who a call is made as: sign-in, token pairs, the check of an access token |
 | `src/main/kotlin/.../server/profile` | the rider's profile: its rules and its table |
 | `src/main/kotlin/.../server/spot` | the catalog of spots and the spots a rider follows: rules and tables |
+| `src/main/kotlin/.../server/forecast` | the source of forecasts (Open-Meteo) and the forecast kept per spot |
 | `src/main/kotlin/.../server/db` | the connection pool and the migration runner |
 | `src/main/resources/db/migration` | the schema, as SQL migrations applied in order |
 | `src/test/kotlin` | tests through real HTTP handling in memory, on a real PostgreSQL |
@@ -114,7 +119,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 - [x] Sign-in and tokens: anonymous by installation id, rotating refresh tokens, validation problems
 - [x] Profile, with `Idempotency-Key` for calls that change something
 - [x] Spots: the catalog and a rider's own list
-- [ ] Real forecasts: source adapter, cache, scheduler, endpoint
+- [x] Real forecasts: Open-Meteo adapter, a forecast kept per spot, the endpoint
 - [ ] Crews, rides, seats, the event feed
 - [ ] Push token intake
 - [ ] Staging deployment, contract tests against it, debug builds of the app on it

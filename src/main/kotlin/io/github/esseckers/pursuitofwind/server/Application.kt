@@ -5,9 +5,11 @@ import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.server.api.Api
 import io.github.esseckers.pursuitofwind.server.api.ProblemException
 import io.github.esseckers.pursuitofwind.server.api.authRoutes
+import io.github.esseckers.pursuitofwind.server.api.forecastRoutes
 import io.github.esseckers.pursuitofwind.server.api.profileRoutes
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
 import io.github.esseckers.pursuitofwind.server.api.spotRoutes
+import io.github.esseckers.pursuitofwind.server.api.unavailable
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -68,6 +70,7 @@ internal fun Application.module(api: Api) {
         authRoutes(api)
         profileRoutes(api)
         spotRoutes(api)
+        forecastRoutes(api)
         // For the host's checks: the process is up and its database answers. Not part of the API contract.
         get(HEALTH_PATH) {
             if (api.database.isUp()) {
@@ -105,8 +108,7 @@ private fun StatusPagesConfig.problems() {
         if (cause.isOutage()) {
             call.application.environment.log
                 .warn("The database was not there for a call: {}", cause.cause?.message ?: cause.message)
-            call.response.header(ApiHeaders.RETRY_AFTER, "1")
-            call.respondProblem(HttpStatusCode.ServiceUnavailable, ProblemCode.SERVICE_UNAVAILABLE, "Service temporarily unavailable")
+            call.respondProblem(unavailable())
         } else {
             call.respondUnexpected(cause)
         }

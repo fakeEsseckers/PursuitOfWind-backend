@@ -9,6 +9,7 @@ import io.ktor.server.request.receiveChannel
 import io.ktor.utils.io.readBuffer
 import kotlinx.io.readByteArray
 import kotlinx.serialization.DeserializationStrategy
+import kotlin.time.Instant
 
 // What comes in. A body is read by the server itself, up to a limit, and decoded with the contract's JSON; nothing
 // here depends on the call's Content-Type, as nothing in the app's in-app backend does.
@@ -55,6 +56,16 @@ internal fun intQuery(
 ): Int {
     val raw = parameters[name] ?: return default
     return raw.toIntOrNull()?.takeIf { it in range } ?: throw invalid("$name must be an integer from ${range.first} to ${range.last}.")
+}
+
+/** The moment the query parameter [name] gives, as ISO-8601; [default] when the call does not give it. */
+internal fun instantQuery(
+    parameters: Parameters,
+    name: String,
+    default: Instant,
+): Instant {
+    val raw = parameters[name] ?: return default
+    return Instant.parseOrNull(raw) ?: throw invalid("$name must be an ISO-8601 instant.")
 }
 
 /**

@@ -5,6 +5,8 @@ import io.github.esseckers.pursuitofwind.contract.ProblemDto
 import io.github.esseckers.pursuitofwind.server.api.Api
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.db.DatabaseConfig
+import io.github.esseckers.pursuitofwind.server.forecast.Forecasts
+import io.github.esseckers.pursuitofwind.server.forecast.OpenMeteo
 import io.github.esseckers.pursuitofwind.server.module
 import io.ktor.client.HttpClient
 import io.ktor.client.statement.HttpResponse
@@ -24,11 +26,13 @@ import kotlin.time.Instant
  * @property client calls the server as the app would.
  * @property database where the server's database is, for the tests that are about the database itself.
  * @property clock the server's time; it stands still until a test moves it.
+ * @property weather the source of forecasts the server asks, which forecasts what a test tells it to.
  */
 internal class TestServer(
     val client: HttpClient,
     val database: DatabaseConfig,
     val clock: TestClock,
+    val weather: FakeOpenMeteo,
 )
 
 /** A clock that shows what a test sets it to. It starts on a Thursday morning in July 2026. */
@@ -50,12 +54,13 @@ internal fun serverTest(
     TestPostgres.withDatabase { config ->
         Database(config).use { database ->
             database.migrate()
-            val api = Api(database, clock)
+            val weather = FakeOpenMeteo(clock)
+            val api = Api(database, clock, Forecasts(database, OpenMeteo(weather.client)))
             application {
                 module(api)
                 extra(api)
             }
-            TestServer(client, config, clock).test()
+            TestServer(client, config, clock, weather).test()
         }
     }
 }

@@ -34,6 +34,7 @@ dependencies {
     implementation(libs.ktor.server.call.id)
     implementation(libs.ktor.server.auto.head.response)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.cio)
     runtimeOnly(libs.logback.classic)
 
     implementation(libs.hikari)
@@ -45,6 +46,7 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.embedded.postgres) {
         // Binaries for machines this project is not developed on; each is tens of megabytes.

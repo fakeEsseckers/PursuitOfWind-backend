@@ -5,6 +5,7 @@ import io.github.esseckers.pursuitofwind.contract.ApiRoute
 import io.github.esseckers.pursuitofwind.contract.ContractJson
 import io.github.esseckers.pursuitofwind.server.auth.Sessions
 import io.github.esseckers.pursuitofwind.server.db.Database
+import io.github.esseckers.pursuitofwind.server.forecast.Forecasts
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -30,6 +31,7 @@ import kotlin.time.Instant
 internal class Api(
     val database: Database,
     val clock: Clock,
+    val forecasts: Forecasts,
     val sessions: Sessions = Sessions(database, clock),
 ) {
     /** The time as the API and the database both keep it: to the millisecond. */
