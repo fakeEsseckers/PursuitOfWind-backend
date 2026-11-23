@@ -20,7 +20,7 @@ This file is the short operating manual. What is built and what is next: the roa
 ./gradlew installDist     # the distribution the image packages: build/install/server
 ```
 
-The client's artifacts are read from its GitHub Packages with a token (`gpr.user` and `gpr.key` in `~/.gradle/gradle.properties`, `GITHUB_ACTOR` and `GITHUB_TOKEN` in CI). Without a token, publish them to the local Maven repository from a clone of the client and add `-Ppursuitofwind.localArtifacts=true` to every command above; `README.md` has the exact steps.
+The client's artifacts are read from its GitHub Packages with a token: `gpr.user` and `gpr.key` in the git-ignored `local.properties` of this folder, `GITHUB_ACTOR` and `GITHUB_TOKEN` in CI. The token is never taken from `~/.gradle/gradle.properties`, which every Gradle build on the machine reads. Without a token, publish the artifacts to the local Maven repository from a clone of the client and set `pursuitofwind.localArtifacts=true` in `local.properties` (or pass it as `-P` to a command); `README.md` has the exact steps.
 
 Expect one Gradle deprecation warning from the detekt 1.23.8 plugin, as in the client.
 

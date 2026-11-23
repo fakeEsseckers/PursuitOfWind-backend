@@ -14,14 +14,16 @@ A running skeleton: the process starts, answers `GET /health`, and answers every
 
 You need JDK 21 and access to the two artifacts of the client repository. GitHub Packages asks for a token even to read a public package (CI uses the workflow's own), so on your machine pick one:
 
-- **A token.** Create a personal access token (classic) with the `read:packages` scope and put it in `~/.gradle/gradle.properties`, never in this repository:
+- **A token.** Create a personal access token (classic) with only the `read:packages` scope and put it in a file named `local.properties` in this folder. Git ignores that file, and no other project on the machine reads it:
 
   ```properties
   gpr.user=<your GitHub login>
   gpr.key=<the token>
   ```
 
-- **A clone of the client.** Publish the artifacts to your local Maven repository from the client's release tag, then add `-Ppursuitofwind.localArtifacts=true` to every Gradle command here:
+  The build deliberately does not take the token from `~/.gradle/gradle.properties`: every Gradle build on the machine reads that file, and its values override a project's own.
+
+- **A clone of the client.** Publish the artifacts to your local Maven repository from the client's release tag, then put `pursuitofwind.localArtifacts=true` into `local.properties` in this folder (or add `-Ppursuitofwind.localArtifacts=true` to a single command):
 
   ```bash
   ./gradlew :shared:windengine:publishToMavenLocal :shared:contract:publishToMavenLocal -Ppursuitofwind.version=0.1.0
