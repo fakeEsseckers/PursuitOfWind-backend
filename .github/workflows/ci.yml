@@ -1,7 +1,7 @@
 name: CI
 
 # Every pull request and every push to main: lint, tests, the distribution, and the image built from it and started
-# on a PostgreSQL.
+# on a PostgreSQL. A push to main that passes all of that is then deployed to the staging (docs/adr/0003).
 #
 # The engine and the contract are read from the client repository's GitHub Packages with the workflow's own token,
 # which is enough while those packages are public.
@@ -9,6 +9,8 @@ name: CI
 # Repository settings this reads, optional:
 #   secret PACKAGES_TOKEN
 #     a token with read:packages, used in place of the workflow's own; needed only if the packages become private
+#   secret RAILWAY_TOKEN
+#     the project token of the staging on Railway; without it the deploy step is skipped
 on:
   pull_request:
   push:
@@ -30,8 +32,13 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      # A step cannot ask whether a secret exists, so the job says it here.
+      HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+      # The service of the Railway project that runs the server.
+      RAILWAY_SERVICE: PursuitOfWind-backend
     services:
-      # For the last step only: the image needs a database to start. The tests bring their own PostgreSQL.
+      # For the image step only: the image needs a database to start. The tests bring their own PostgreSQL.
       postgres:
         image: postgres:17
         env:
@@ -75,3 +82,21 @@ jobs:
           done
           docker logs server
           exit 1
+
+      - name: Deploy to the staging
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_RAILWAY_TOKEN == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          # What the image is built from and nothing else: the Dockerfile and the distribution it packages, the one
+          # the steps above have just tested.
+          mkdir -p deploy/build/install
+          cp Dockerfile deploy/
+          cp -r build/install/server deploy/build/install/
+          npm install --global @railway/cli@5.75.0
+          # --no-gitignore: the repository ignores build/, which is exactly what the image needs.
+          railway up deploy --path-as-root --no-gitignore --ci --service "$RAILWAY_SERVICE"
+
+      - name: Say why nothing was deployed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_RAILWAY_TOKEN != 'true'
+        run: echo "::notice::The secret RAILWAY_TOKEN is not set, so this commit was not deployed to the staging."

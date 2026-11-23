@@ -91,6 +91,17 @@ docker run --rm --publish 8080:8080 --env DATABASE_URL=postgresql://user:passwor
 
 The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_OPTS` in the `Dockerfile`); a host can set its own `JAVA_OPTS`.
 
+## Staging
+
+Every push to `main` that passes CI is deployed to a staging on Railway ([ADR 0003](docs/adr/0003-deploying-the-staging-from-ci.md)): the CI job uploads the `Dockerfile` and the tested distribution with the Railway CLI, and Railway builds and runs the image. Pull requests are never deployed.
+
+It needs, once:
+
+- on Railway, a project with a PostgreSQL and a service named `PursuitOfWind-backend` with no repository connected, and on that service the variable `DATABASE_URL` set to `${{Postgres.DATABASE_URL}}`;
+- in this repository, the secret `RAILWAY_TOKEN`: a project token of that Railway project.
+
+Without the secret the job deploys nothing and says so.
+
 ## Layout
 
 | Path | What is there |
@@ -113,5 +124,6 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 - [ ] Real forecasts: source adapter, cache, scheduler, endpoint
 - [ ] Crews, rides, seats, the event feed
 - [ ] Push token intake
-- [ ] Staging deployment, contract tests against it, debug builds of the app on it
+- [x] Staging: every merge to `main` deployed to Railway
+- [ ] Contract tests against the staging, debug builds of the app on it
 - [ ] Production environment; server-side window evaluation and push notifications
