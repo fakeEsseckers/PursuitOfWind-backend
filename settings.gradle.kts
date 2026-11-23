@@ -5,6 +5,11 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Downloads the JDK the build asks for (21) when the machine has none, as the client's build does.
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 // The decision engine and the API contract are built in the client repository and published from there, one version
 // per release tag (docs/adr/0001). GitHub Packages asks for a token even to read a public package: on a developer's
 // machine `gpr.user` and `gpr.key` in ~/.gradle/gradle.properties, in CI GITHUB_ACTOR and GITHUB_TOKEN. The
