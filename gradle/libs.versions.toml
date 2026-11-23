@@ -4,7 +4,13 @@
 [versions]
 kotlin = "2.4.21"
 ktor = "3.6.0"
+# The client's version.
+kotlinx-coroutines = "1.11.0"
 logback = "1.6.8"
+# The database: driver, connection pool, migrations.
+postgresql = "42.7.15"
+hikari = "7.1.0"
+flyway = "13.13.0"
 # The release of the client repository whose engine and contract this server is built against.
 pursuitofwind = "0.1.0"
 
@@ -12,6 +18,10 @@ pursuitofwind = "0.1.0"
 detekt = "1.23.8"
 ktlint-gradle = "14.2.0"
 ktlint = "1.8.0"
+
+# Tests run on a real PostgreSQL started from these binaries, no Docker needed.
+embedded-postgres = "2.2.3"
+embedded-postgres-binaries = "17.12.0"
 
 [libraries]
 pursuitofwind-windengine = { module = "io.github.esseckers.pursuitofwind:windengine", version.ref = "pursuitofwind" }
@@ -28,7 +38,18 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+
+embedded-postgres = { module = "io.zonky.test:embedded-postgres", version.ref = "embedded-postgres" }
+embedded-postgres-binaries-bom = { module = "io.zonky.test.postgres:embedded-postgres-binaries-bom", version.ref = "embedded-postgres-binaries" }
+embedded-postgres-binaries-darwin-arm64 = { module = "io.zonky.test.postgres:embedded-postgres-binaries-darwin-arm64v8" }
+embedded-postgres-binaries-linux-arm64 = { module = "io.zonky.test.postgres:embedded-postgres-binaries-linux-arm64v8" }
+
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
