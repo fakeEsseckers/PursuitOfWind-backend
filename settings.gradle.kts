@@ -25,7 +25,10 @@ plugins {
 // in a clone of the client.
 val localProperties =
     java.util.Properties().apply {
-        providers.fileContents(layout.rootDirectory.file("local.properties")).asText.orNull?.let { load(it.reader()) }
+        providers
+            .fileContents(layout.rootDirectory.file("local.properties"))
+            .asText.orNull
+            ?.let { load(it.reader()) }
     }
 
 fun local(name: String): String? = localProperties.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
