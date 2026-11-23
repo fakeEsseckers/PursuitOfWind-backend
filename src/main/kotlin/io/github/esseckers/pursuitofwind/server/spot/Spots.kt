@@ -39,8 +39,10 @@ internal object Spots {
         limit: Int,
     ): List<SpotDto> =
         handle
-            .createQuery("select * from spots where (cast(:after as text) is null or id > :after) order by id limit :limit")
-            .bind("after", after)
+            // The empty text sorts before every id, so one statement serves the first page and the others, and the
+            // index is walked from where the page starts.
+            .createQuery("select * from spots where id > :after order by id limit :limit")
+            .bind("after", after.orEmpty())
             .bind("limit", limit)
             .map { row, _ -> spot(row) }
             .list()

@@ -40,6 +40,12 @@ internal fun <T> decoded(
         throw invalid("The body is not valid JSON for this operation.", e)
     }
 
+/** The contract's pattern for an id in a path, with an end to its length: letters, digits, `_` and `-`. */
+private val ID_FORM = Regex("[A-Za-z0-9_-]{1,128}")
+
+/** Whether [text] could be an id of this API at all. What is not cannot name anything, and is kept away from SQL. */
+internal fun isId(text: String): Boolean = ID_FORM.matches(text)
+
 /** The whole number the query parameter [name] gives, within [range]; [default] when the call does not give it. */
 internal fun intQuery(
     parameters: Parameters,

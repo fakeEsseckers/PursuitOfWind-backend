@@ -14,7 +14,9 @@ import io.github.esseckers.pursuitofwind.contract.SpotPageDto
 import io.github.esseckers.pursuitofwind.contract.SpotUpdateDto
 import io.github.esseckers.pursuitofwind.engine.DecisionEngine
 import io.github.esseckers.pursuitofwind.engine.model.Bearing
+import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.testing.Rider
+import io.github.esseckers.pursuitofwind.server.testing.TestPostgres
 import io.github.esseckers.pursuitofwind.server.testing.json
 import io.github.esseckers.pursuitofwind.server.testing.problem
 import io.github.esseckers.pursuitofwind.server.testing.rider
@@ -123,10 +125,19 @@ class SpotTest {
         serverTest {
             val rider = rider()
 
-            for (query in listOf("limit=0", "limit=101", "limit=many", "cursor=not-a-cursor")) {
+            for (query in listOf(
+                "limit=0",
+                "limit=101",
+                "limit=many",
+                "cursor=not-a-cursor",
+                "cursor=c_",
+                "cursor=c_%00",
+                "cursor=c_a/b",
+            )) {
                 rider.catalog(query).assertProblem(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED, query)
             }
             assertEquals(HttpStatusCode.OK, rider.catalog("limit=100").status)
+            assertEquals(SpotPageDto(emptyList()), rider.catalog("cursor=c_spt_nobody-added-this").json(SpotPageDto.serializer()))
         }
 
     @Test
@@ -181,6 +192,8 @@ class SpotTest {
                     "an offset for a time zone" to bay.copy(timeZone = "+02:00"),
                     "a zone that is not a region" to bay.copy(timeZone = "GMT+1"),
                     "a zone nobody knows" to bay.copy(timeZone = "Mars/Olympus"),
+                    "an offset dressed as a region" to bay.copy(timeZone = "Etc/GMT+1"),
+                    "a zone not every phone knows" to bay.copy(timeZone = "SystemV/AST4"),
                 )
 
             for ((what, spot) in outside) {
@@ -195,7 +208,8 @@ class SpotTest {
             )
 
             assertEquals(emptyList(), rider.catalog().json(SpotPageDto.serializer()).items)
-            assertEquals(HttpStatusCode.Created, rider.add(bay.copy(timeZone = "UTC", waterBearingDeg = 0.0)).status)
+            assertEquals(HttpStatusCode.Created, rider.add(bay.copy(timeZone = "UTC")).status)
+            assertEquals(HttpStatusCode.Created, rider.add(bay.copy(timeZone = "Etc/UTC")).status)
         }
 
     @Test
@@ -304,6 +318,79 @@ class SpotTest {
             rider.follow(spot.id, driveMinutes = -1).assertProblem(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED)
             rider.follow(spot.id, driveMinutes = 1441).assertProblem(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED)
             assertEquals(HttpStatusCode.OK, rider.follow(spot.id, driveMinutes = 1440).status)
+        }
+
+    @Test
+    fun `an unknown spot is not found even when the rest of the call is wrong too`() =
+        serverTest {
+            val rider = rider()
+
+            rider.follow("spt_nowhere", driveMinutes = -1).assertProblem(HttpStatusCode.NotFound, ProblemCode.NOT_FOUND)
+            rider.call(ApiRoute.PUT_MY_SPOT, "not json", null, "spt_nowhere").assertProblem(HttpStatusCode.NotFound, ProblemCode.NOT_FOUND)
+        }
+
+    @Test
+    fun `an id that could not be an id of this API is refused before anything is looked up or kept`() =
+        serverTest {
+            val rider = rider()
+            val notIds = listOf("a%00b", "a%20b", "spt_" + "a".repeat(200), "%D1%81%D0%BF%D0%BE%D1%82")
+
+            for (notAnId in notIds) {
+                val operations = listOf(ApiRoute.PUT_MY_SPOT, ApiRoute.DELETE_MY_SPOT, ApiRoute.UPDATE_SPOT)
+                for (operation in operations) {
+                    rider
+                        .call(operation, """{"driveMinutes":10,"favorite":false}""", key, notAnId)
+                        .assertProblem(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED, "${operation.name} $notAnId")
+                }
+            }
+            assertEquals(listOf("0"), TestPostgres.strings(database, "select count(*) from ${Database.SCHEMA}.idempotency_keys"))
+        }
+
+    @Test
+    fun `changing and following a spot twice with one key happens once, and a key is for one spot`() =
+        serverTest {
+            val rider = rider()
+            val first = rider.added(bay.copy(name = "First"))
+            val second = rider.added(bay.copy(name = "Second"))
+            val rename = ContractJson.encodeToString(SpotUpdateDto.serializer(), SpotUpdateDto("Renamed", first.location, 10.0))
+            val settings = """{"driveMinutes":20,"favorite":true}"""
+
+            val changed = rider.call(ApiRoute.UPDATE_SPOT, rename, key, first.id)
+            val changedAgain = rider.call(ApiRoute.UPDATE_SPOT, rename, key, first.id)
+            val otherSpot = rider.call(ApiRoute.UPDATE_SPOT, rename, key, second.id)
+            assertEquals(changed.json(SpotDto.serializer()), changedAgain.json(SpotDto.serializer()))
+            assertEquals("true", changedAgain.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            assertEquals(second.id to null, otherSpot.json(SpotDto.serializer()).id to otherSpot.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+
+            rider.call(ApiRoute.PUT_MY_SPOT, settings, key, first.id)
+            val followedAgain = rider.call(ApiRoute.PUT_MY_SPOT, settings, key, first.id)
+            assertEquals("true", followedAgain.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            rider
+                .call(ApiRoute.PUT_MY_SPOT, """{"driveMinutes":21,"favorite":true}""", key, first.id)
+                .assertProblem(HttpStatusCode.UnprocessableEntity, ProblemCode.IDEMPOTENCY_KEY_REUSED)
+
+            rider.call(ApiRoute.DELETE_MY_SPOT, null, key, first.id)
+            val removedAgain = rider.call(ApiRoute.DELETE_MY_SPOT, null, key, first.id)
+            assertEquals(HttpStatusCode.NoContent to "true", removedAgain.status to removedAgain.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+        }
+
+    @Test
+    fun `a beach facing any way round the compass has sectors the contract allows`() =
+        serverTest {
+            val rider = rider()
+
+            for (water in listOf(0.0, 0.1, 90.0, 180.0, 359.9, 359.9999999999)) {
+                val spot = rider.added(bay.copy(waterBearingDeg = water))
+
+                assertEquals(water, spot.waterBearingDeg)
+                for (sector in spot.rideableSectors + spot.dangerSectors) {
+                    assertTrue(
+                        sector.fromDeg >= 0.0 && sector.fromDeg < 360.0 && sector.toDeg >= 0.0 && sector.toDeg < 360.0,
+                        "$water: $sector",
+                    )
+                }
+                assertEquals(1 to 1, spot.rideableSectors.size to spot.dangerSectors.size)
+            }
         }
 
     @Test

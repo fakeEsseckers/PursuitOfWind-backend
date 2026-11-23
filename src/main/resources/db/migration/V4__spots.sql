@@ -15,6 +15,8 @@ create table spots (
     created_at timestamptz not null
 );
 
+create index spots_by_creator on spots (created_by);
+
 -- The spots a rider follows (MySpot): how long the drive is, and whether it is a favourite.
 create table my_spots (
     user_id text not null references users (id) on delete cascade,

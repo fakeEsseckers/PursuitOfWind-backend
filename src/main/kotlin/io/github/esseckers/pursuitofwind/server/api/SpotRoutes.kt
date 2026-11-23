@@ -65,6 +65,6 @@ private fun Change.updateSpot(): Answer {
 /** The id the page starts after: the `cursor` the last page gave, or null for the first page. */
 private fun cursor(parameters: Parameters): String? =
     parameters["cursor"]?.let { cursor ->
-        check422(cursor.startsWith(CURSOR_PREFIX)) { "cursor is not a cursor from this API." }
+        check422(cursor.startsWith(CURSOR_PREFIX) && isId(cursor.removePrefix(CURSOR_PREFIX))) { "cursor is not a cursor from this API." }
         cursor.removePrefix(CURSOR_PREFIX)
     }

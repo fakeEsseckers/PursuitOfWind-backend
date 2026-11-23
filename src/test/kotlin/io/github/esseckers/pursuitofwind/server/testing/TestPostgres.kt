@@ -4,6 +4,7 @@ import io.github.esseckers.pursuitofwind.server.db.DatabaseConfig
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import java.util.UUID
 
 /**
@@ -14,6 +15,10 @@ import java.util.UUID
  * refuses to start as root); it must be PostgreSQL 13 or newer, and its user must be allowed to create databases.
  */
 internal object TestPostgres {
+    private const val DROP_ATTEMPTS = 20
+    private const val DROP_PAUSE_MILLIS = 250L
+    private const val INSUFFICIENT_PRIVILEGE = "42501"
+
     private val server: DatabaseConfig by lazy {
         DatabaseConfig.parse(System.getenv("TEST_DATABASE_URL") ?: startEmbedded())
     }
@@ -29,8 +34,21 @@ internal object TestPostgres {
         }
     }
 
-    /** Takes [database] away with its connections cut, as an outage would. */
-    fun drop(database: DatabaseConfig) = execute(server, "drop database if exists ${database.name} with (force)")
+    /**
+     * Takes [database] away with its connections cut, as an outage would. A role that is not a superuser cannot cut
+     * the server's own autovacuum off a database, so the drop is tried again while one is passing through.
+     */
+    fun drop(database: DatabaseConfig) {
+        repeat(DROP_ATTEMPTS - 1) {
+            try {
+                return execute(server, "drop database if exists ${database.name} with (force)")
+            } catch (e: SQLException) {
+                if (e.sqlState != INSUFFICIENT_PRIVILEGE) throw e
+                Thread.sleep(DROP_PAUSE_MILLIS)
+            }
+        }
+        execute(server, "drop database if exists ${database.name} with (force)")
+    }
 
     /** How many connections are open to [database] right now. */
     fun connections(database: DatabaseConfig): Int =

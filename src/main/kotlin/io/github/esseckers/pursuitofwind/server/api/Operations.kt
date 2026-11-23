@@ -48,7 +48,7 @@ internal fun Route.open(
 /**
  * Registers the handler of [operation], one that only reads, for signed-in users. It runs only for a call with an
  * access token that works, and is told the id of the user the token was issued to; any other call is answered
- * `401 UNAUTHORIZED`.
+ * `401 UNAUTHORIZED`. The ids in the path have the contract's form by the time it runs.
  */
 internal fun Route.signedIn(
     api: Api,
@@ -56,7 +56,13 @@ internal fun Route.signedIn(
     handler: suspend RoutingContext.(userId: String) -> Unit,
 ) {
     require(operation.requiresAuth) { "$operation is open to everyone: register it with open" }
-    route(operation.path, HttpMethod.parse(operation.method)) { handle { handler(api.userOf(call)) } }
+    route(operation.path, HttpMethod.parse(operation.method)) {
+        handle {
+            val userId = api.userOf(call)
+            operation.requireIds(call.parameters)
+            handler(userId)
+        }
+    }
 }
 
 /**
@@ -76,6 +82,7 @@ internal fun Route.changing(
     route(operation.path, HttpMethod.parse(operation.method)) {
         handle {
             val userId = api.userOf(call)
+            operation.requireIds(call.parameters)
             val body = call.bodyText()
             val now = api.now()
             val parameters = call.parameters
@@ -138,6 +145,14 @@ internal data class Answer(
 
 private suspend fun ApplicationCall.respondAnswer(answer: Answer) {
     if (answer.json == null) respond(answer.status) else respondText(answer.json, ContentType.Application.Json, answer.status)
+}
+
+/**
+ * Every id in the path of a call to this operation has the form the contract gives ids; one that has not is
+ * `422 VALIDATION_FAILED`. Nothing else in a path reaches a query or the key of a kept answer.
+ */
+private fun ApiRoute.requireIds(parameters: Parameters) {
+    for (name in pathParameters) check422(isId(parameters[name].orEmpty())) { "$name is not an id of this API." }
 }
 
 /**

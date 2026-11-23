@@ -15,6 +15,7 @@ internal object SpotRules {
     private val LONGITUDES = -180.0..180.0
     private const val FULL_TURN_DEG = 360.0
     private val DRIVE_MINUTES = 0..ApiLimits.MySpot.DRIVE_MAX_MINUTES
+    private val NOT_REGIONS = listOf("Etc/", "SystemV/")
 
     /** A spot as a rider gives it; [timeZone] comes only with a new spot. */
     fun check(
@@ -33,6 +34,11 @@ internal object SpotRules {
 
     fun checkDrive(minutes: Int) = check422(minutes in DRIVE_MINUTES) { "driveMinutes must be from 0 to ${DRIVE_MINUTES.last}." }
 
-    /** An IANA region id this server knows (`Europe/Berlin`), or `UTC`; not a fixed offset such as `+02:00` or `GMT+1`. */
-    private fun isRegionZone(id: String): Boolean = id == "UTC" || ('/' in id && id in ZoneId.getAvailableZoneIds())
+    /**
+     * An IANA region id this server knows (`Europe/Berlin`), or `UTC`; not a fixed offset such as `+02:00` or `GMT+1`.
+     * A fixed offset written as a region (`Etc/GMT+1`) is one all the same, and the `SystemV` ids are not in every
+     * platform's zone data, so a spot with one could not be shown on every rider's phone.
+     */
+    private fun isRegionZone(id: String): Boolean =
+        id == "UTC" || id == "Etc/UTC" || ('/' in id && NOT_REGIONS.none(id::startsWith) && id in ZoneId.getAvailableZoneIds())
 }
