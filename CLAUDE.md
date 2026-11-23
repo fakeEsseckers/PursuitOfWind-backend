@@ -36,7 +36,7 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 | `api/` | the HTTP side of the contract: `open` / `signedIn` / `changing` register a handler for an `ApiRoute`, `Api` is what handlers share, `Idempotency` keeps answers under `Idempotency-Key`, `body` reads a request and `respondJson` answers with a DTO, `ProblemException` and `respondProblem` answer failures, one `*Routes.kt` per tag of the contract |
 | `auth/` | `Sessions` (sign-in, token pairs, who an access token belongs to) and `Credentials` (tokens, ids, hashes) |
 | `profile/`, `spot/` | one package per slice of the contract, shaped the same way: `ProfileRules` / `SpotRules` (the contract's limits) and `Profiles` / `Spots` (the tables) |
-| `forecast/` | `OpenMeteo` (the source, behind `ForecastSource`) and `Forecasts` (the forecast kept per spot for an hour) |
+| `forecast/` | `OpenMeteo` (the source, behind `ForecastSource`) and `Forecasts` (the forecast of a place, kept for an hour and shared by the spots there; what to do while the source fails) |
 | `db/` | `Database` (connection pool, migration runner, `transaction { handle -> }` and `read { handle -> }` for queries) and `DatabaseConfig` (`DATABASE_URL`) |
 | `src/main/resources/db/migration` | the schema: SQL migrations, applied in order at start |
 | `src/test/kotlin` | tests through `testApplication` (`serverTest`), real HTTP handling in memory on a real PostgreSQL (`TestPostgres`) |

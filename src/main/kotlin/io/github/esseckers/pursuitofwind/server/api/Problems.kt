@@ -40,14 +40,14 @@ internal fun invalid(
 
 /**
  * `503 SERVICE_UNAVAILABLE` with `Retry-After`: something the server needs is not there at the moment, through no
- * fault of the call, which may come again.
+ * fault of the call, which may come again in [retryAfterSeconds].
  */
-internal fun unavailable() =
+internal fun unavailable(retryAfterSeconds: Int = 1) =
     ProblemException(
         HttpStatusCode.ServiceUnavailable,
         ProblemCode.SERVICE_UNAVAILABLE,
         "Service temporarily unavailable",
-        headers = mapOf(ApiHeaders.RETRY_AFTER to "1"),
+        headers = mapOf(ApiHeaders.RETRY_AFTER to retryAfterSeconds.toString()),
     )
 
 /** `404 NOT_FOUND`: [what], named by the id the call gave, is not there. */

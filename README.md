@@ -12,7 +12,9 @@ The first slice of the API on its database: the process connects to PostgreSQL, 
 
 ## Weather data
 
-Forecasts come from [Open-Meteo](https://open-meteo.com/) ([ADR 0007](docs/adr/0007-forecasts-from-open-meteo-kept-per-spot.md)): the wind of the ECMWF, ICON and GFS models, and precipitation, temperature and sun times for each spot. Weather data by Open-Meteo.com, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The server uses its free, non-commercial tier.
+Forecasts come from [Open-Meteo](https://open-meteo.com/) ([ADR 0007](docs/adr/0007-forecasts-from-open-meteo-kept-per-place.md)): the wind of the ECMWF, ICON and GFS models, and precipitation, temperature and sun times. Weather data by Open-Meteo.com, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+The server uses the free tier, which is for non-commercial use and allows under 10,000 calls a day. A forecast is fetched when somebody asks for it, at most once an hour for a place (about a kilometre across), and every spot there shares it. While Open-Meteo does not answer, the app gets the last forecast the server has.
 
 ## Run it
 
@@ -104,7 +106,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 | `src/main/kotlin/.../server/auth` | who a call is made as: sign-in, token pairs, the check of an access token |
 | `src/main/kotlin/.../server/profile` | the rider's profile: its rules and its table |
 | `src/main/kotlin/.../server/spot` | the catalog of spots and the spots a rider follows: rules and tables |
-| `src/main/kotlin/.../server/forecast` | the source of forecasts (Open-Meteo) and the forecast kept per spot |
+| `src/main/kotlin/.../server/forecast` | the source of forecasts (Open-Meteo) and the forecast kept per place |
 | `src/main/kotlin/.../server/db` | the connection pool and the migration runner |
 | `src/main/resources/db/migration` | the schema, as SQL migrations applied in order |
 | `src/test/kotlin` | tests through real HTTP handling in memory, on a real PostgreSQL |
@@ -119,7 +121,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 - [x] Sign-in and tokens: anonymous by installation id, rotating refresh tokens, validation problems
 - [x] Profile, with `Idempotency-Key` for calls that change something
 - [x] Spots: the catalog and a rider's own list
-- [x] Real forecasts: Open-Meteo adapter, a forecast kept per spot, the endpoint
+- [x] Real forecasts: Open-Meteo adapter, a forecast kept per place, the endpoint
 - [ ] Crews, rides, seats, the event feed
 - [ ] Push token intake
 - [ ] Staging deployment, contract tests against it, debug builds of the app on it

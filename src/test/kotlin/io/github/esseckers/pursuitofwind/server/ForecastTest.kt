@@ -7,6 +7,7 @@ import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.contract.SpotDto
 import io.github.esseckers.pursuitofwind.contract.SpotForecastDto
 import io.github.esseckers.pursuitofwind.contract.ThunderRiskDto
+import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.testing.FakeOpenMeteo
 import io.github.esseckers.pursuitofwind.server.testing.Rider
 import io.github.esseckers.pursuitofwind.server.testing.json
@@ -23,8 +24,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /** A spot's forecast from the source to the app, through HTTP, the server's own client and a real database. */
@@ -51,6 +55,15 @@ class ForecastTest {
         query: String? = null,
     ): List<ForecastHourDto> = forecast(spotId, query).json(SpotForecastDto.serializer()).hours
 
+    /** The hours of the UTC day [date] that the spot's forecast calls daylight, as hours of that day. */
+    private suspend fun Rider.daylight(
+        spotId: String,
+        date: String,
+    ): Set<Int> {
+        val midnight = Instant.parse("${date}T00:00:00Z")
+        return hours(spotId, "from=$midnight&hours=24").filter { it.isDaylight }.map { (it.start - midnight).inWholeHours.toInt() }.toSet()
+    }
+
     /** An answer of the real service, kept in `src/test/resources/open-meteo` as it came. */
     private fun recorded(name: String): String =
         checkNotNull(javaClass.getResource("/open-meteo/$name")) { "no recording $name" }.readText()
@@ -72,11 +85,12 @@ class ForecastTest {
             assertEquals(List(72) { now + it.hours }, forecast.hours.map { it.start })
             val first = forecast.hours.first()
             val hour = weather.indexOf(now)
+            // The mean and the bearing are the hour's own; the gust is the strongest of the hour, stamped at its end.
             assertEquals(
                 listOf(
-                    ModelWindDto("ecmwf", 7.0 + hour % 5, 10.5 + hour % 5, 235.0),
-                    ModelWindDto("icon", 7.0 + hour % 5, 10.5 + hour % 5, 235.0),
-                    ModelWindDto("gfs", 7.0 + hour % 5, 10.5 + hour % 5, 0.0),
+                    ModelWindDto("ecmwf", 7.0 + hour % 5, 10.5 + (hour + 1) % 5, 235.0),
+                    ModelWindDto("icon", 7.0 + hour % 5, 10.5 + (hour + 1) % 5, 235.0),
+                    ModelWindDto("gfs", 7.0 + hour % 5, 10.5 + (hour + 1) % 5, 0.0),
                 ),
                 first.models,
             )
@@ -103,17 +117,18 @@ class ForecastTest {
                     night(
                         "2026-11-23T21:00:00Z",
                         1.6,
-                        ModelWindDto("ecmwf", 2.94, 5.0, 342.0),
-                        ModelWindDto("icon", 3.7, 6.3, 0.0),
-                        ModelWindDto("gfs", 4.1, 6.1, 357.0),
+                        ModelWindDto("ecmwf", 2.94, 4.8, 342.0),
+                        ModelWindDto("icon", 3.7, 5.7, 0.0),
+                        ModelWindDto("gfs", 4.1, 5.2, 357.0),
                     ),
                     night(
                         "2026-11-23T22:00:00Z",
                         1.2,
-                        ModelWindDto("ecmwf", 2.75, 4.8, 350.0),
-                        ModelWindDto("icon", 3.0, 5.7, 2.0),
-                        ModelWindDto("gfs", 3.9, 5.2, 359.0),
+                        ModelWindDto("ecmwf", 2.75, 4.6, 350.0),
+                        ModelWindDto("icon", 3.0, 4.6, 2.0),
+                        ModelWindDto("gfs", 3.9, 5.1, 359.0),
                     ),
+                    // The last hour the recording has: nothing is stamped at its end, so its gust is the stamp at its start.
                     night(
                         "2026-11-23T23:00:00Z",
                         1.2,
@@ -182,36 +197,63 @@ class ForecastTest {
         }
 
     @Test
-    fun `an hour is in daylight from sunrise until half an hour before sunset`() =
+    fun `an hour is in daylight when it starts at or after sunrise and ends half an hour before sunset`() =
         serverTest {
             val rider = rider()
             val spot = rider.spot()
-
-            val day =
-                rider.hours(spot.id, "from=2026-07-17T00:00:00Z&hours=24").associate {
-                    it.start
-                        .toString()
-                        .substring(11, 13)
-                        .toInt() to
-                        it.isDaylight
+            weather.sun = { day ->
+                when (day) {
+                    2 -> (4.hours + 20.minutes) to (20.hours + 30.minutes)
+                    3 -> 4.hours to (20.hours + 29.minutes)
+                    else -> FakeOpenMeteo.SUNRISE to FakeOpenMeteo.SUNSET
                 }
+            }
 
-            assertEquals((FakeOpenMeteo.SUNRISE_HOUR until FakeOpenMeteo.SUNSET_HOUR - 1).toSet(), day.filterValues { it }.keys)
+            assertEquals((4..18).toSet(), rider.daylight(spot.id, "2026-07-16"))
+            assertEquals((5..19).toSet(), rider.daylight(spot.id, "2026-07-17"))
+            assertEquals((4..18).toSet(), rider.daylight(spot.id, "2026-07-18"))
         }
 
     @Test
-    fun `rain and temperature are the source's, and an hour without them is left out`() =
+    fun `far from Greenwich the light of a day runs into the next day of the source`() =
+        serverTest {
+            val rider = rider()
+            val spot = rider.spot()
+            // As the real service gives them for the Pacific: the sunrise of a UTC day, and the sunset that follows it.
+            weather.sun = { 18.hours to 32.hours }
+
+            assertEquals((0..6).toSet() + (18..23).toSet(), rider.daylight(spot.id, "2026-07-17"))
+        }
+
+    @Test
+    fun `a day without a night is light all through, and a day without a sun is dark`() =
+        serverTest {
+            val rider = rider()
+            val north = rider.spot(lat = 69.6)
+            val south = rider.spot(lat = -69.6)
+            // As the real service gives them: a polar day from midnight to midnight, a polar night as one moment.
+            weather.sun = { 0.hours to 24.hours }
+            val summer = rider.daylight(north.id, "2026-07-17")
+            weather.sun = { 0.hours to 0.hours }
+            val winter = rider.daylight(south.id, "2026-07-17")
+
+            assertEquals((0..23).toSet(), summer)
+            assertEquals(emptySet(), winter)
+        }
+
+    @Test
+    fun `rain is what fell during the hour, and an hour the source lacks is a gap that later hours do not fill`() =
         serverTest {
             val rider = rider()
             val spot = rider.spot()
             val first = weather.indexOf(now)
-            weather.precipitationMm = { hour -> if (hour == first + 1) null else 0.4 * (hour - first) }
-            weather.temperatureC = { hour -> -3.5 + (hour - first) }
+            weather.precipitationMm = { hour -> 0.5 * (hour - first) }
+            weather.temperatureC = { hour -> if (hour == first + 1) null else -3.5 + (hour - first) }
 
             val hours = rider.hours(spot.id, "hours=3")
 
-            assertEquals(listOf(now, now + 2.hours, now + 3.hours), hours.map { it.start })
-            assertEquals(listOf(0.0 to -3.5, 0.8 to -1.5, 1.2000000000000002 to -0.5), hours.map { it.precipitationMm to it.temperatureC })
+            assertEquals(listOf(now, now + 2.hours), hours.map { it.start })
+            assertEquals(listOf(0.5 to -3.5, 1.5 to -1.5), hours.map { it.precipitationMm to it.temperatureC })
         }
 
     @Test
@@ -246,61 +288,138 @@ class ForecastTest {
         }
 
     @Test
-    fun `a spot that moved gets the forecast of its new place`() =
+    fun `spots on one beach share a forecast whoever added them, and a spot that moved gets its new place's`() =
         serverTest {
-            val rider = rider()
-            val spot = rider.spot()
-            rider.forecast(spot.id)
+            val alex = rider()
+            val dana = rider()
+            val his = alex.spot(lat = 54.4936)
+            val hers = dana.spot(lat = 54.4921)
+            val first = alex.forecast(his.id).json(SpotForecastDto.serializer())
+            clock.now += 10.minutes
+            val second = dana.forecast(hers.id).json(SpotForecastDto.serializer())
+            assertEquals(2, weather.requests)
+            assertEquals(first.generatedAt to first.hours, second.generatedAt to second.hours)
 
-            rider.call(ApiRoute.UPDATE_SPOT, """{"name":"Moved","location":{"lat":36.0,"lon":-5.6},"waterBearingDeg":200}""", null, spot.id)
-            rider.forecast(spot.id)
+            alex.call(ApiRoute.UPDATE_SPOT, """{"name":"Moved","location":{"lat":36.004,"lon":-5.6},"waterBearingDeg":200}""", null, his.id)
+            alex.forecast(his.id)
 
-            assertEquals(listOf("54.4936,8.8131", "36.0,-5.6"), weather.places.distinct())
+            assertEquals(listOf("54.49,8.81", "36.0,-5.6"), weather.places.distinct())
             assertEquals(4, weather.requests)
         }
 
     @Test
-    fun `when the source does not answer, the forecast that is there is given, and a spot without one says come again`() =
+    fun `however the source fails, the forecast that is there is given, and a spot without one says when to come again`() =
         serverTest {
             val morning = rider()
             val seen = morning.spot()
             val unseen = morning.spot(lat = 55.0)
             val earlier = morning.forecast(seen.id).json(SpotForecastDto.serializer())
-            clock.now += 3.hours
-            val rider = signedInAgain(morning)
+            val failures: List<Pair<String, FakeOpenMeteo.() -> Unit>> =
+                listOf(
+                    "the connection breaks" to { unreachable = true },
+                    "it is down" to { failsWith = HttpStatusCode.ServiceUnavailable },
+                    "it has had enough of this server" to { failsWith = HttpStatusCode.TooManyRequests },
+                    "it refuses the request" to { failsWith = HttpStatusCode.BadRequest },
+                    "a page in place of JSON" to { answersWith = "<html>busy</html>" },
+                    "JSON with nothing in it" to { answersWith = "{}" },
+                    "its error with a good status" to { answersWith = """{"error":true,"reason":"Not today"}""" },
+                    "times that are not times" to { answersWith = """{"hourly":{"time":["soon"]},"daily":{"time":[]}}""" },
+                    "a forecast without an hour" to { answersWith = """{"hourly":{"time":[]},"daily":{"time":[]}}""" },
+                )
 
-            for (failure in listOf(HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests)) {
-                weather.failsWith = failure
+            for ((failure, happens) in failures) {
+                clock.now += 2.hours
+                val rider = signedInAgain(morning)
+                weather.unreachable = false
+                weather.failsWith = null
+                weather.answersWith = null
+                weather.happens()
 
                 val stale = rider.forecast(seen.id)
                 val none = rider.forecast(unseen.id)
 
-                assertEquals(HttpStatusCode.OK, stale.status, failure.toString())
-                assertEquals(earlier.generatedAt, stale.json(SpotForecastDto.serializer()).generatedAt)
-                assertEquals(HttpStatusCode.ServiceUnavailable, none.status)
-                assertEquals(ProblemCode.SERVICE_UNAVAILABLE to "1", none.problem().code to none.headers["Retry-After"])
+                assertEquals(HttpStatusCode.OK, stale.status, failure)
+                assertEquals(earlier.generatedAt, stale.json(SpotForecastDto.serializer()).generatedAt, failure)
+                assertEquals(HttpStatusCode.ServiceUnavailable, none.status, failure)
+                assertEquals(ProblemCode.SERVICE_UNAVAILABLE to "300", none.problem().code to none.headers["Retry-After"], failure)
             }
-
-            weather.failsWith = null
-            assertEquals(clock.now, rider.forecast(seen.id).json(SpotForecastDto.serializer()).generatedAt)
         }
 
     @Test
-    fun `an answer of the source that is not a forecast is no forecast`() =
+    fun `a source that failed is left alone for five minutes, then asked again`() =
         serverTest {
             val rider = rider()
             val spot = rider.spot()
+            weather.unreachable = true
+            assertEquals(HttpStatusCode.ServiceUnavailable, rider.forecast(spot.id).status)
+            val asked = weather.requests
 
-            for (nonsense in listOf(
-                "<html>busy</html>",
-                "{}",
-                """{"hourly":{"time":["soon"]}}""",
-                """{"error":true,"reason":"too far north"}""",
-            )) {
-                weather.answersWith = nonsense
+            clock.now += 5.minutes - 1.seconds
+            val again = List(3) { rider.forecast(spot.id) }
 
-                assertEquals(HttpStatusCode.ServiceUnavailable, rider.forecast(spot.id).status, nonsense)
+            assertEquals(List(3) { HttpStatusCode.ServiceUnavailable to "1" }, again.map { it.status to it.headers["Retry-After"] })
+            assertEquals(asked, weather.requests)
+
+            weather.unreachable = false
+            clock.now += 1.seconds
+            val forecast = rider.forecast(spot.id)
+
+            assertEquals(HttpStatusCode.OK, forecast.status)
+            assertEquals(clock.now, forecast.json(SpotForecastDto.serializer()).generatedAt)
+            assertEquals(asked + 2, weather.requests)
+        }
+
+    @Test
+    fun `riders waiting for a source that then fails get their answer together, and it is asked once`() =
+        serverTest {
+            val riders = List(8) { rider() }
+            val spot = riders.first().spot()
+            weather.takes = 300.milliseconds
+            weather.failsWith = HttpStatusCode.BadGateway
+
+            val forecasts = coroutineScope { riders.map { async { it.forecast(spot.id) } }.awaitAll() }
+
+            assertEquals(List(8) { HttpStatusCode.ServiceUnavailable }, forecasts.map { it.status })
+            assertEquals(2, weather.requests)
+        }
+
+    @Test
+    fun `a kept forecast that can no longer be read is fetched anew`() =
+        serverTest {
+            val rider = rider()
+            val spot = rider.spot()
+            rider.forecast(spot.id)
+
+            for ((round, unreadable) in listOf("""[{"start":"soon"}]""", """{"hours":[]}""", "[1]").withIndex()) {
+                Database(database).use { database ->
+                    database.transaction {
+                        it
+                            .createUpdate(
+                                "update forecasts set hours = cast(:hours as jsonb)",
+                            ).bind("hours", unreadable)
+                            .execute()
+                    }
+                }
+
+                assertEquals(72, rider.hours(spot.id).size, unreadable)
+                assertEquals(2 * (round + 2), weather.requests, unreadable)
             }
+        }
+
+    @Test
+    fun `a forecast nobody has asked about for a week is forgotten`() =
+        serverTest {
+            val first = rider()
+            val old = first.spot()
+            val other = first.spot(lat = 55.0)
+            first.forecast(old.id)
+            clock.now += 7.days
+            val rider = signedInAgain(first)
+            rider.forecast(other.id)
+            weather.failsWith = HttpStatusCode.ServiceUnavailable
+
+            assertEquals(HttpStatusCode.ServiceUnavailable, rider.forecast(old.id).status)
+            assertEquals(HttpStatusCode.OK, rider.forecast(other.id).status)
         }
 
     @Test

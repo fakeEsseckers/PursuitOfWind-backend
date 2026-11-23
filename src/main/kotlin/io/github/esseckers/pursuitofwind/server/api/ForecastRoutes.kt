@@ -5,6 +5,7 @@ import io.github.esseckers.pursuitofwind.contract.ApiRoute
 import io.github.esseckers.pursuitofwind.contract.SpotForecastDto
 import io.github.esseckers.pursuitofwind.server.spot.Spots
 import io.ktor.server.routing.Route
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
 private const val DEFAULT_HOURS = 72
@@ -25,10 +26,12 @@ internal fun Route.forecastRoutes(api: Api) {
                 now,
             ).let { Instant.fromEpochSeconds(it.epochSeconds / HOUR_SECONDS * HOUR_SECONDS) }
         val hours = intQuery(call.parameters, "hours", HOURS, DEFAULT_HOURS)
-        val forecast = api.forecasts.of(spot, now)
+        val forecast = api.forecasts.at(spot.location, now)
+        // The slots asked for are hours on the clock: one the source lacks is a gap, not a reason to go on past them.
+        val until = from + hours.hours
         call.respondJson(
             SpotForecastDto.serializer(),
-            SpotForecastDto(spot.id, forecast.fetchedAt, forecast.hours.filter { it.start >= from }.take(hours)),
+            SpotForecastDto(spot.id, forecast.fetchedAt, forecast.hours.filter { it.start >= from && it.start < until }),
         )
     }
 }
