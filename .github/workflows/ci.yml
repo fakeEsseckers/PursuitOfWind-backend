@@ -1,0 +1,60 @@
+name: CI
+
+# Every pull request and every push to main: lint, tests, the distribution, and the image built from it and started.
+#
+# The engine and the contract are read from the client repository's GitHub Packages with the workflow's own token,
+# which is enough while those packages are public.
+#
+# Repository settings this reads, optional:
+#   secret PACKAGES_TOKEN
+#     a token with read:packages, used in place of the workflow's own; needed only if the packages become private
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A newer push replaces the run of a pull request; every commit on main keeps its own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check and image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Check
+        env:
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./scripts/check.sh
+
+      - name: Build the image
+        run: docker build --tag pursuitofwind-backend:ci .
+
+      - name: Start the image and ask for its health
+        run: |
+          docker run --detach --name server --publish 8080:8080 pursuitofwind-backend:ci
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://localhost:8080/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs server
+          exit 1
