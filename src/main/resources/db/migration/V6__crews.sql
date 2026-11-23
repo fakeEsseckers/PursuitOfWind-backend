@@ -10,11 +10,15 @@ left join profiles p on p.user_id = u.id;
 --
 -- A change in a crew, someone joining it or a change to one of its rides, holds the crew's row until it commits, so
 -- such changes happen one at a time and the feed below has them in the order they happened.
+--
+-- position is the order crews were made in: a rider's crews are listed oldest first, and two made in the same
+-- instant in the order they were made.
 create table crews (
     id text collate "C" primary key,
     name text not null,
     invite_code text not null unique,
-    created_at timestamptz not null
+    created_at timestamptz not null,
+    position bigint generated always as identity
 );
 
 -- Who is in a crew, and since when (CrewMember). position is the order of joining: members are listed in it.

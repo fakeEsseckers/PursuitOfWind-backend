@@ -18,6 +18,9 @@ internal object Crews {
     private const val CREW =
         "select c.*, (select count(*) from crew_members m where m.crew_id = c.id) as member_count from crews c"
 
+    private const val HOLD_BY_ID = "select id from crews where id = :value for no key update"
+    private const val HOLD_BY_INVITE_CODE = "select id from crews where invite_code = :value for no key update"
+
     /** A code that is taken is drawn again; with forty random bits this many draws do not all fail. */
     private const val CODE_DRAWS = 20
 
@@ -71,7 +74,7 @@ internal object Crews {
         userId: String,
         held: Boolean = false,
     ): CrewDto {
-        if (held) hold(handle, "id", id)
+        if (held) hold(handle, HOLD_BY_ID, id)
         val crew = find(handle, id) ?: throw notFound("Crew $id")
         if (!isMember(handle, id, userId)) throw notAMember()
         return crew
@@ -87,7 +90,7 @@ internal object Crews {
                 """
                 $CREW join crew_members mine on mine.crew_id = c.id
                 where mine.user_id = :user
-                order by c.created_at, c.id
+                order by c.created_at, c.position
                 """,
             ).bind("user", userId)
             .map { row, _ -> crew(row) }
@@ -126,7 +129,7 @@ internal object Crews {
         userId: String,
         now: Instant,
     ): CrewDto? {
-        val id = hold(handle, "invite_code", code) ?: return null
+        val id = hold(handle, HOLD_BY_INVITE_CODE, code) ?: return null
         if (!isMember(handle, id, userId)) {
             addMember(handle, id, userId, MemberRoleDto.MEMBER, now)
             val person = People.of(handle, userId)
@@ -137,17 +140,17 @@ internal object Crews {
     }
 
     /**
-     * Holds the crew whose [column] is [value] until the transaction ends, and gives its id; null if there is none.
+     * Holds the crew [by] finds for [value] until the transaction ends, and gives its id; null if there is none.
      * Changes in one crew wait for each other here, which is what puts its feed in order. The lock leaves the crew's
      * key alone, so reading the crew and adding rows that point at it do not wait.
      */
     private fun hold(
         handle: Handle,
-        column: String,
+        by: String,
         value: String,
     ): String? =
         handle
-            .createQuery("select id from crews where $column = :value for no key update")
+            .createQuery(by)
             .bind("value", value)
             .map { row, _ -> row.getString("id") }
             .findOne()

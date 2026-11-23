@@ -21,8 +21,8 @@ internal object CrewRules {
     fun newInviteCode(): String = "WIND-" + group() + "-" + group()
 
     /**
-     * [typed] as a code is kept: the contract ignores case and the spaces around it. Null for what no crew can have as
-     * its code, which so never reaches a query.
+     * The invite code a rider meant by [typed], in the form codes are kept in: the contract ignores case and the
+     * spaces around a code. Null when no crew can have it as its code; such text never reaches a query.
      */
     fun inviteCode(typed: String): String? = typed.trim().uppercase().takeIf(CODE::matches)
 

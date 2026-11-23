@@ -18,19 +18,18 @@ import io.github.esseckers.pursuitofwind.contract.ProblemDto
 import io.github.esseckers.pursuitofwind.contract.RiderProfileDto
 import io.github.esseckers.pursuitofwind.contract.SkillLevelDto
 import io.github.esseckers.pursuitofwind.contract.WindUnitDto
+import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.testing.Rider
 import io.github.esseckers.pursuitofwind.server.testing.TestServer
 import io.github.esseckers.pursuitofwind.server.testing.json
 import io.github.esseckers.pursuitofwind.server.testing.problem
 import io.github.esseckers.pursuitofwind.server.testing.rider
 import io.github.esseckers.pursuitofwind.server.testing.serverTest
+import io.github.esseckers.pursuitofwind.server.testing.together
 import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -226,6 +225,17 @@ class CrewTest {
         }
 
     @Test
+    fun `crews made in the same instant are listed in the order they were made`() =
+        serverTest {
+            val alex = rider()
+            val names = List(6) { "Crew $it" }
+
+            names.forEach { alex.created(it) }
+
+            assertEquals(names, alex.crews().map { it.name })
+        }
+
+    @Test
     fun `members and feed are for members, and a crew that is not there is not found`() =
         serverTest {
             val alex = rider()
@@ -323,6 +333,13 @@ class CrewTest {
             )
             assertEquals(CrewFeedDto(emptyList(), hasMore = false), nothingNew)
             assertNull(nothingNew.lastEventId)
+
+            // A reader who has read to the end and comes back later gets what happened meanwhile, and only that.
+            val late = rider()
+            late.join(crew.inviteCode)
+            val news = alex.feedPage(crew.id, "since=${second.lastEventId}")
+            assertEquals(listOf(late.userId), news.items.map { it.actor.userId })
+            assertEquals(emptyList(), alex.feedPage(crew.id, "since=${news.lastEventId}").items)
         }
 
     @Test
@@ -350,7 +367,14 @@ class CrewTest {
                 ),
                 gone.problem(),
             )
-            for (since in listOf(elsewhere, "yesterday", "evt_", "evt_-1", "evt_99999999999999999999", "")) {
+            val known =
+                alex
+                    .feedPage(crew.id)
+                    .items
+                    .single()
+                    .id
+            val padded = "evt_0" + known.removePrefix("evt_")
+            for (since in listOf(elsewhere, padded, "yesterday", "evt_", "evt_-1", "evt_99999999999999999999", "")) {
                 alex.feed(crew.id, "since=$since").assertProblem(HttpStatusCode.Gone, ProblemCode.FEED_RESET, "'$since'")
             }
             for (limit in listOf("0", "101", "many")) {
@@ -387,17 +411,17 @@ class CrewTest {
         serverTest {
             val alex = rider()
             val crew = alex.created()
-            val riders = List(8) { rider() }
+            val twice = rider()
+            val riders = listOf(twice, twice, rider(), rider(), rider())
+            // Joining holds the crew: behind the test's hold on it the five calls line up, and then go one by one.
+            val theCrew = "select 1 from ${Database.SCHEMA}.crews where id = '${crew.id}' for no key update"
 
-            val joined = coroutineScope { riders.flatMap { rider -> List(2) { async { rider.join(crew.inviteCode) } } }.awaitAll() }
+            val joined = together(theCrew, riders.map { rider -> suspend { rider.join(crew.inviteCode) } })
 
-            assertEquals(List(16) { HttpStatusCode.OK }, joined.map { it.status })
+            assertEquals(List(5) { HttpStatusCode.OK }, joined.map { it.status })
             val members = alex.memberList(crew.id)
-            val events = alex.feedPage(crew.id).items
-            assertEquals(9, alex.crews().single().memberCount)
+            assertEquals(5, alex.crews().single().memberCount)
             assertEquals(riders.map { it.userId }.toSet(), members.drop(1).map { it.userId }.toSet())
-            assertEquals(members.drop(1).map { it.userId }, events.map { it.actor.userId })
-            val numbers = events.map { it.id.removePrefix("evt_").toLong() }
-            assertEquals(numbers.sorted(), numbers)
+            assertEquals(members.drop(1).map { it.userId }, alex.feedPage(crew.id).items.map { it.actor.userId })
         }
 }

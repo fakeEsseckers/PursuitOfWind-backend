@@ -13,7 +13,7 @@ import org.jdbi.v3.core.statement.Query
  */
 internal object CrewFeed {
     private const val ID_PREFIX = "evt_"
-    private val ID = Regex("evt_[0-9]{1,18}")
+    private val ID = Regex("evt_[1-9][0-9]{0,17}")
 
     /**
      * Adds what [event] builds, given its id, to the feed of [crewId]. The caller holds the crew ([Crews.ofMember],
