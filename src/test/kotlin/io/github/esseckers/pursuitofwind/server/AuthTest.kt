@@ -3,7 +3,6 @@ package io.github.esseckers.pursuitofwind.server
 import io.github.esseckers.pursuitofwind.contract.ApiRoute
 import io.github.esseckers.pursuitofwind.contract.AuthTokensDto
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
-import io.github.esseckers.pursuitofwind.server.api.signedIn
 import io.github.esseckers.pursuitofwind.server.auth.Sessions
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.testing.TestPostgres
@@ -22,9 +21,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
-import io.ktor.server.application.Application
-import io.ktor.server.response.respondText
-import io.ktor.server.routing.routing
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -43,11 +39,6 @@ import kotlin.time.Duration.Companion.seconds
 class AuthTest {
     private val phone = "0b6c7a52-3f1e-4c8d-9a7b-5e2f1d0c4b3a"
     private val tablet = "9d3e1f60-7a2b-4c5d-8e9f-0a1b2c3d4e5f"
-
-    /** One operation that wants a signed-in user, answering with who the call was made as. */
-    private val whoAmI: Application.(Sessions) -> Unit = { sessions ->
-        routing { signedIn(ApiRoute.GET_PROFILE, sessions) { userId -> call.respondText(userId) } }
-    }
 
     private suspend fun TestServer.post(
         operation: ApiRoute,
@@ -74,6 +65,12 @@ class AuthTest {
 
     private suspend fun TestServer.whoAmI(accessToken: String?): HttpResponse =
         client.get(ApiRoute.GET_PROFILE.path) { if (accessToken != null) bearerAuth(accessToken) }
+
+    /** The call got past the check of its token: this user has no profile yet, which only a signed-in user is told. */
+    private suspend fun HttpResponse.assertSignedIn() {
+        assertEquals(HttpStatusCode.NotFound, status)
+        assertEquals("Profile not found", problem().title)
+    }
 
     private suspend fun HttpResponse.assertUnauthorized(challenge: String) {
         assertEquals(HttpStatusCode.Unauthorized, status)
@@ -102,7 +99,7 @@ class AuthTest {
 
     @Test
     fun `signing in again is the same user with new tokens, and the earlier tokens keep working`() =
-        serverTest(whoAmI) {
+        serverTest {
             val first = tokens()
             val again = signIn()
 
@@ -111,7 +108,7 @@ class AuthTest {
             assertEquals(first.userId, second.userId)
             assertNotEquals(first.accessToken, second.accessToken)
             assertNotEquals(first.refreshToken, second.refreshToken)
-            assertEquals(first.userId, whoAmI(first.accessToken).bodyAsText())
+            whoAmI(first.accessToken).assertSignedIn()
             assertEquals(HttpStatusCode.OK, refresh(first.refreshToken).status)
         }
 
@@ -149,7 +146,7 @@ class AuthTest {
 
     @Test
     fun `a refresh token is exchanged once for the next pair of the same user`() =
-        serverTest(whoAmI) {
+        serverTest {
             val first = tokens()
             clock.now += 30.minutes
 
@@ -159,7 +156,7 @@ class AuthTest {
             val next = response.json(AuthTokensDto.serializer())
             assertEquals(first.userId, next.userId)
             assertEquals(clock.now + 1.hours, next.accessTokenExpiresAt)
-            assertEquals(first.userId, whoAmI(next.accessToken).bodyAsText())
+            whoAmI(next.accessToken).assertSignedIn()
             refresh(first.refreshToken).assertUnauthorized("""Bearer error="invalid_token"""")
             assertEquals(HttpStatusCode.OK, refresh(next.refreshToken).status)
         }
@@ -224,15 +221,15 @@ class AuthTest {
         }
 
     @Test
-    fun `an operation for signed-in users is told who calls, and refuses a call without a token that works`() =
-        serverTest(whoAmI) {
+    fun `an operation for signed-in users takes a token that works, however the header is written, and no other`() =
+        serverTest {
             val alex = tokens(phone)
             val dana = tokens(tablet)
 
-            assertEquals(alex.userId, whoAmI(alex.accessToken).bodyAsText())
-            assertEquals(dana.userId, whoAmI(dana.accessToken).bodyAsText())
-            assertEquals(alex.userId, whoAmIWith("bearer ${alex.accessToken}").bodyAsText())
-            assertEquals(alex.userId, whoAmIWith("Bearer   ${alex.accessToken} ").bodyAsText())
+            whoAmI(alex.accessToken).assertSignedIn()
+            whoAmI(dana.accessToken).assertSignedIn()
+            whoAmIWith("bearer ${alex.accessToken}").assertSignedIn()
+            whoAmIWith("Bearer   ${alex.accessToken} ").assertSignedIn()
 
             val invalidToken = """Bearer error="invalid_token""""
             whoAmI(accessToken = null).assertUnauthorized("Bearer")
@@ -245,11 +242,11 @@ class AuthTest {
 
     @Test
     fun `an access token works for an hour and not a second longer`() =
-        serverTest(whoAmI) {
+        serverTest {
             val alex = tokens()
 
             clock.now += 1.hours - 1.seconds
-            assertEquals(alex.userId, whoAmI(alex.accessToken).bodyAsText())
+            whoAmI(alex.accessToken).assertSignedIn()
 
             clock.now += 1.seconds
             whoAmI(alex.accessToken).assertUnauthorized("""Bearer error="invalid_token"""")
@@ -296,7 +293,7 @@ class AuthTest {
 
     @Test
     fun `a user keeps only the newest few pairs, so signing in over and over fills nothing`() =
-        serverTest(whoAmI) {
+        serverTest {
             val pairs = List(Sessions.KEPT_PER_USER + 2) { tokens() }
 
             assertEquals(
@@ -309,7 +306,7 @@ class AuthTest {
             )
             whoAmI(pairs.first().accessToken).assertUnauthorized("""Bearer error="invalid_token"""")
             refresh(pairs[1].refreshToken).assertUnauthorized("""Bearer error="invalid_token"""")
-            assertEquals(pairs.last().userId, whoAmI(pairs.last().accessToken).bodyAsText())
+            whoAmI(pairs.last().accessToken).assertSignedIn()
             assertEquals(HttpStatusCode.OK, refresh(pairs[2].refreshToken).status)
         }
 }

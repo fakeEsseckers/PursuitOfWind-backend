@@ -33,15 +33,16 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 | --- | --- |
 | `Main.kt`, `ServerConfig.kt` | the start, and the configuration read from environment variables |
 | `Application.kt` | `Application.module()`: what every route shares, and the routes |
-| `api/` | the HTTP side of the contract: `open` / `signedIn` register a handler for an `ApiRoute`, `respondJson` answers with a DTO, `ProblemException` and `respondProblem` answer failures, one `*Routes.kt` per tag of the contract |
+| `api/` | the HTTP side of the contract: `open` / `signedIn` / `changing` register a handler for an `ApiRoute`, `Api` is what handlers share, `Idempotency` keeps answers under `Idempotency-Key`, `respondJson` answers with a DTO, `ProblemException` and `respondProblem` answer failures, one `*Routes.kt` per tag of the contract |
 | `auth/` | `Sessions` (sign-in, token pairs, who an access token belongs to) and `Credentials` (tokens, ids, hashes) |
+| `profile/` | `ProfileRules` (the contract's limits) and `Profiles` (the table); later slices get a package each, shaped the same way |
 | `db/` | `Database` (connection pool, migration runner, `transaction { handle -> }` and `read { handle -> }` for queries) and `DatabaseConfig` (`DATABASE_URL`) |
 | `src/main/resources/db/migration` | the schema: SQL migrations, applied in order at start |
 | `src/test/kotlin` | tests through `testApplication` (`serverTest`), real HTTP handling in memory on a real PostgreSQL (`TestPostgres`) |
 
 ## Hard rules
 
-1. Contract first, and the contract lives in the client repository. The server never answers with a route, field, status or problem code that `api/openapi.yaml` of the pinned client release does not have. A change to the API starts there: contract, DTOs, fake backend, a client release, then this server. A handler is registered for an `ApiRoute` (`open`, `signedIn`), never for a path written by hand, and reads and writes the contract's DTOs.
+1. Contract first, and the contract lives in the client repository. The server never answers with a route, field, status or problem code that `api/openapi.yaml` of the pinned client release does not have. A change to the API starts there: contract, DTOs, fake backend, a client release, then this server. A handler is registered for an `ApiRoute` (`open`, `signedIn`, `changing`), never for a path written by hand, and reads and writes the contract's DTOs. An operation that changes something is registered with `changing`: its handler runs in one transaction and returns an `Answer`, which is what makes `Idempotency-Key` work (ADR 0006). The limits of a request are the contract's `ApiLimits`, checked with `check422`.
 2. Verdicts, windows and kite sizes come from the `windengine` artifact. No decision rule is written or adjusted here.
 3. JSON is `ContractJson`. A handler answers through `respondJson`, never `call.respond`, which would ask the `Accept` header after the work is done. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s, with the status and title the client's in-app fake backend uses for the same case; an unexpected failure tells the client nothing about the inside.
 4. No secrets in the repository or the image. Tokens, passwords and addresses come from environment variables or CI secrets.

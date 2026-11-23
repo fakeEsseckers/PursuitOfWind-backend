@@ -28,11 +28,22 @@ internal class ProblemException(
     val title: String,
     val detail: String? = null,
     val headers: Map<String, String> = emptyMap(),
-) : RuntimeException(code)
+    cause: Throwable? = null,
+) : RuntimeException(code, cause)
 
-/** `422 VALIDATION_FAILED`: the request is readable but breaks a rule of the contract; [detail] says which. */
-internal fun invalid(detail: String) =
-    ProblemException(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED, "Request is not valid", detail)
+/** `422 VALIDATION_FAILED`: the request breaks a rule of the contract; [detail] says which. */
+internal fun invalid(
+    detail: String,
+    cause: Throwable? = null,
+) = ProblemException(HttpStatusCode.UnprocessableEntity, ProblemCode.VALIDATION_FAILED, "Request is not valid", detail, cause = cause)
+
+/** Fails with `422 VALIDATION_FAILED` and [detail] unless [condition] holds. */
+internal inline fun check422(
+    condition: Boolean,
+    detail: () -> String,
+) {
+    if (!condition) throw invalid(detail())
+}
 
 /**
  * `401 UNAUTHORIZED`, with the challenge the contract and RFC 6750 ask for: a token that was sent and does not work

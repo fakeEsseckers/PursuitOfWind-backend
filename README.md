@@ -8,7 +8,7 @@ It implements the API the app already speaks. The contract (`api/openapi.yaml`),
 
 ## Status
 
-The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`) and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`) and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
 
 ## Run it
 
@@ -98,6 +98,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 | `src/main/kotlin/.../server` | the application: start, configuration, what every route shares |
 | `src/main/kotlin/.../server/api` | the HTTP side of the contract: routes registered by the contract's operation, problem bodies |
 | `src/main/kotlin/.../server/auth` | who a call is made as: sign-in, token pairs, the check of an access token |
+| `src/main/kotlin/.../server/profile` | the rider's profile: its rules and its table |
 | `src/main/kotlin/.../server/db` | the connection pool and the migration runner |
 | `src/main/resources/db/migration` | the schema, as SQL migrations applied in order |
 | `src/test/kotlin` | tests through real HTTP handling in memory, on a real PostgreSQL |
@@ -110,7 +111,8 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 - [x] PostgreSQL: connection pool, SQL migrations applied at start, tests on a real database
 - [ ] Contract tests against the `openapi.yaml` of the pinned client release
 - [x] Sign-in and tokens: anonymous by installation id, rotating refresh tokens, validation problems
-- [ ] Profile and spots, with `Idempotency-Key` for calls that change something
+- [x] Profile, with `Idempotency-Key` for calls that change something
+- [ ] Spots: the catalog and a rider's own list
 - [ ] Real forecasts: source adapter, cache, scheduler, endpoint
 - [ ] Crews, rides, seats, the event feed
 - [ ] Push token intake

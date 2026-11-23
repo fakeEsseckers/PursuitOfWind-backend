@@ -1,5 +1,6 @@
 package io.github.esseckers.pursuitofwind.server
 
+import io.github.esseckers.pursuitofwind.server.api.Api
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.engine.EmbeddedServer
@@ -7,6 +8,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
 import org.flywaydb.core.api.FlywayException
+import kotlin.time.Clock
 
 /** Starts the server with the configuration from the environment, and stays up until the process is stopped. */
 fun main() {
@@ -28,6 +30,6 @@ internal fun server(config: ServerConfig): EmbeddedServer<NettyApplicationEngine
     }
     return embeddedServer(Netty, port = config.port, host = "0.0.0.0") {
         monitor.subscribe(ApplicationStopped) { database.close() }
-        module(database)
+        module(Api(database, Clock.System))
     }
 }

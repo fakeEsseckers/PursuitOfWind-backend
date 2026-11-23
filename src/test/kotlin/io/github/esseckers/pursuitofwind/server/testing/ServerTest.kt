@@ -2,7 +2,7 @@ package io.github.esseckers.pursuitofwind.server.testing
 
 import io.github.esseckers.pursuitofwind.contract.ContractJson
 import io.github.esseckers.pursuitofwind.contract.ProblemDto
-import io.github.esseckers.pursuitofwind.server.auth.Sessions
+import io.github.esseckers.pursuitofwind.server.api.Api
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.db.DatabaseConfig
 import io.github.esseckers.pursuitofwind.server.module
@@ -40,20 +40,20 @@ internal class TestClock(
 
 /**
  * Runs [test] against the whole server. [extra] adds what a test needs beside the server's own routes, and is given
- * the server's [Sessions] for routes that want a signed-in user.
+ * what the server's handlers share.
  */
 internal fun serverTest(
-    extra: Application.(Sessions) -> Unit = {},
+    extra: Application.(Api) -> Unit = {},
     test: suspend TestServer.() -> Unit,
 ) = testApplication {
     val clock = TestClock()
     TestPostgres.withDatabase { config ->
         Database(config).use { database ->
             database.migrate()
-            val sessions = Sessions(database, clock)
+            val api = Api(database, clock)
             application {
-                module(database, clock, sessions)
-                extra(sessions)
+                module(api)
+                extra(api)
             }
             TestServer(client, config, clock).test()
         }

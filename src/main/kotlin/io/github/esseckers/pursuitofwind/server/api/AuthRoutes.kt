@@ -12,9 +12,9 @@ import io.ktor.server.routing.RoutingContext
 import java.util.UUID
 
 /** `POST /v1/auth/anonymous` and `POST /v1/auth/refresh`: the two operations that hand out tokens. */
-internal fun Route.authRoutes(sessions: Sessions) {
-    open(ApiRoute.SIGN_IN_ANONYMOUSLY) { signIn(sessions) }
-    open(ApiRoute.REFRESH_TOKENS) { refresh(sessions) }
+internal fun Route.authRoutes(api: Api) {
+    open(ApiRoute.SIGN_IN_ANONYMOUSLY) { signIn(api.sessions) }
+    open(ApiRoute.REFRESH_TOKENS) { refresh(api.sessions) }
 }
 
 /** `201` with tokens for an installation seen for the first time, `200` with new tokens for one seen before. */
