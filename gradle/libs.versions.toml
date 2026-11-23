@@ -11,6 +11,8 @@ logback = "1.6.8"
 postgresql = "42.7.15"
 hikari = "7.1.0"
 flyway = "13.13.0"
+# Queries: SQL as written, rows mapped by hand.
+jdbi = "3.55.0"
 # The release of the client repository whose engine and contract this server is built against.
 pursuitofwind = "0.1.0"
 
@@ -42,6 +44,8 @@ postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" 
 hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
+jdbi-postgres = { module = "org.jdbi:jdbi3-postgres", version.ref = "jdbi" }
 
 embedded-postgres = { module = "io.zonky.test:embedded-postgres", version.ref = "embedded-postgres" }
 embedded-postgres-binaries-bom = { module = "io.zonky.test.postgres:embedded-postgres-binaries-bom", version.ref = "embedded-postgres-binaries" }

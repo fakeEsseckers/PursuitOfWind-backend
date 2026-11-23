@@ -39,6 +39,8 @@ dependencies {
 
     implementation(libs.hikari)
     implementation(libs.flyway.core)
+    implementation(libs.jdbi.core)
+    implementation(libs.jdbi.postgres)
     runtimeOnly(libs.flyway.postgresql)
     runtimeOnly(libs.postgresql)
 

@@ -2,7 +2,10 @@ package io.github.esseckers.pursuitofwind.server
 
 import io.github.esseckers.pursuitofwind.contract.ContractJson
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
+import io.github.esseckers.pursuitofwind.server.api.ProblemException
+import io.github.esseckers.pursuitofwind.server.api.authRoutes
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
+import io.github.esseckers.pursuitofwind.server.auth.Sessions
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -27,16 +30,23 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
 
 /**
  * The server as an application: what every route shares, and the routes. The API's routes arrive one slice of the
  * contract at a time; until a route exists it answers `404` like any other unknown path.
  *
+ * [clock] is the server's only source of the time, so a test can say what time it is.
+ *
  * - JSON is the contract's own ([ContractJson]), so the server reads and writes exactly what the app does.
  * - Every failure is a problem body with a `code` ([problems]).
  * - Every request carries an id (`X-Request-Id`, taken from the request or made here) into the logs and the response.
  */
-internal fun Application.module(database: Database) {
+internal fun Application.module(
+    database: Database,
+    clock: Clock = Clock.System,
+    sessions: Sessions = Sessions(database, clock),
+) {
     install(CallId) {
         header(HttpHeaders.XRequestId)
         generate { UUID.randomUUID().toString() }
@@ -58,6 +68,7 @@ internal fun Application.module(database: Database) {
         problems()
     }
     routing {
+        authRoutes(sessions)
         // For the host's checks: the process is up and its database answers. Not part of the API contract.
         get(HEALTH_PATH) {
             if (database.isUp()) {
@@ -77,6 +88,7 @@ internal fun Application.module(database: Database) {
 /**
  * What a failed call answers when no route wrote the answer itself.
  *
+ * - A rule of the contract a route found broken ([ProblemException]) is answered as the route said.
  * - A request the server could not read (a body that is not JSON, or not the JSON of the operation) is
  *   `422 VALIDATION_FAILED`, as the app's in-app backend answers it. The text of the parser's complaint stays in
  *   the server.
@@ -86,6 +98,7 @@ internal fun Application.module(database: Database) {
  *   about what went wrong inside.
  */
 private fun StatusPagesConfig.problems() {
+    exception<ProblemException> { call, problem -> call.respondProblem(problem) }
     exception<BadRequestException> { call, _ -> call.respondUnreadable() }
     exception<ContentTransformationException> { call, _ -> call.respondUnreadable() }
     exception<NotFoundException> { call, _ -> call.respondNotFound() }
