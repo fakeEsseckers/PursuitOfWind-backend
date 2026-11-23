@@ -1,0 +1,35 @@
+# Versions follow the client repository's catalog where the two share a library, so the server and the app speak
+# through the same Ktor and kotlinx.serialization. Checked against Maven Central on 2026-11-23.
+
+[versions]
+kotlin = "2.4.21"
+ktor = "3.6.0"
+logback = "1.6.8"
+# The release of the client repository whose engine and contract this server is built against.
+pursuitofwind = "0.1.0"
+
+# Quality: the same tools and rules as the client.
+detekt = "1.23.8"
+ktlint-gradle = "14.2.0"
+ktlint = "1.8.0"
+
+[libraries]
+pursuitofwind-windengine = { module = "io.github.esseckers.pursuitofwind:windengine", version.ref = "pursuitofwind" }
+pursuitofwind-contract = { module = "io.github.esseckers.pursuitofwind:contract", version.ref = "pursuitofwind" }
+
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor" }
+ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
+ktor-server-call-id = { module = "io.ktor:ktor-server-call-id", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-gradle" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

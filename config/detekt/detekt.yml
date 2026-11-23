@@ -1,0 +1,23 @@
+# Overrides on top of detekt's default configuration (buildUponDefaultConfig = true).
+# Formatting is owned by ktlint; detekt checks code smells only. The same rules as the client repository.
+
+naming:
+  FunctionNaming:
+    # Test names are sentences in backticks.
+    excludes: ['**/test/**']
+  MatchingDeclarationName:
+    active: true
+
+style:
+  ClassOrdering:
+    # Properties and init blocks, secondary constructors, functions, then the companion object last.
+    active: true
+  MaxLineLength:
+    # Same limit as ktlint (.editorconfig).
+    maxLineLength: 140
+  MagicNumber:
+    excludes: ['**/test/**']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  WildcardImport:
+    active: true
