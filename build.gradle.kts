@@ -33,6 +33,7 @@ dependencies {
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.call.id)
+    implementation(libs.ktor.server.auto.head.response)
     implementation(libs.ktor.serialization.kotlinx.json)
     runtimeOnly(libs.logback.classic)
 

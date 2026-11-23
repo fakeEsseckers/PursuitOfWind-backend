@@ -5,8 +5,10 @@ import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.contract.ProblemDto
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
 import io.ktor.client.request.get
+import io.ktor.client.request.head
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -14,13 +16,17 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.application.Application
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 
 /** What every route of the server shares, through real HTTP handling in memory. */
@@ -48,6 +54,12 @@ class ApplicationTest {
 
             assertEquals(HttpStatusCode.OK, response.status)
             assertEquals("""{"status":"ok"}""", response.bodyAsText())
+        }
+
+    @Test
+    fun `health answers a check that asks with HEAD`() =
+        server {
+            assertEquals(HttpStatusCode.OK, client.head("/health").status)
         }
 
     @Test
@@ -91,7 +103,47 @@ class ApplicationTest {
             val response = client.get("/v1/crews/join")
 
             assertEquals(HttpStatusCode.NotFound, response.status)
-            assertEquals(ProblemCode.INVITE_INVALID, response.problem().code)
+            assertEquals(
+                ProblemDto(
+                    type = "/problems/invite-invalid",
+                    title = "Invite is not valid",
+                    status = 404,
+                    code = ProblemCode.INVITE_INVALID,
+                ),
+                response.problem(),
+            )
+        }
+
+    @Test
+    fun `a body the server cannot read is a validation problem`() =
+        server(extra = { routing { post("/v1/echo") { call.respond(call.receive<ProblemDto>()) } } }) {
+            val unreadable =
+                listOf(
+                    ContentType.Application.Json to "{broken",
+                    ContentType.Application.Json to "{}",
+                    ContentType.Text.Plain to "hello",
+                )
+
+            for ((type, body) in unreadable) {
+                val response =
+                    client.post("/v1/echo") {
+                        contentType(type)
+                        setBody(body)
+                    }
+
+                assertEquals(HttpStatusCode.UnprocessableEntity, response.status, "$type: $body")
+                assertEquals(
+                    ProblemDto(
+                        type = "/problems/validation-failed",
+                        title = "Request is not valid",
+                        status = 422,
+                        code = ProblemCode.VALIDATION_FAILED,
+                        detail = "The body is not valid JSON for this operation.",
+                    ),
+                    response.problem(),
+                    "$type: $body",
+                )
+            }
         }
 
     @Test
@@ -115,5 +167,16 @@ class ApplicationTest {
 
             assertNotNull(made)
             assertEquals("req-42", kept)
+        }
+
+    @Test
+    fun `a request id that could forge a log line is replaced`() =
+        server {
+            for (forged in listOf("x\" level=ERROR msg=forged", "a".repeat(129), "two words")) {
+                val answered = client.get("/health") { header(HttpHeaders.XRequestId, forged) }.headers[HttpHeaders.XRequestId]
+
+                assertNotNull(answered)
+                assertNotEquals(forged, answered)
+            }
         }
 }

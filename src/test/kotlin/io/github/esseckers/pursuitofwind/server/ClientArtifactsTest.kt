@@ -21,7 +21,7 @@ class ClientArtifactsTest {
     }
 
     @Test
-    fun `the engine decides here as it does in the app`() {
+    fun `the engine is here and runs`() {
         val rider = RiderProfile(weightKg = 80.0, level = SkillLevel.INTERMEDIATE, quiverM2 = listOf(7.0, 9.0, 12.0))
 
         val days = DecisionEngine.decideDays(forecasts = emptyList(), profile = rider, now = Instant.parse("2026-10-22T06:00:00Z"))

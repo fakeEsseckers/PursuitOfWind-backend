@@ -39,7 +39,7 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 
 1. Contract first, and the contract lives in the client repository. The server never answers with a route, field, status or problem code that `api/openapi.yaml` of the pinned client release does not have. A change to the API starts there: contract, DTOs, fake backend, a client release, then this server.
 2. Verdicts, windows and kite sizes come from the `windengine` artifact. No decision rule is written or adjusted here.
-3. JSON is `ContractJson`. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s; an unexpected failure tells the client nothing about the inside.
+3. JSON is `ContractJson`. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s, with the status and title the client's in-app fake backend uses for the same case; an unexpected failure tells the client nothing about the inside.
 4. No secrets in the repository or the image. Tokens, passwords and addresses come from environment variables or CI secrets.
 5. Configuration is read once at start through `ServerConfig`; a wrong value stops the start and names the variable.
 6. Tests go through HTTP (`testApplication`), not around it.

@@ -12,7 +12,7 @@ A running skeleton: the process starts, answers `GET /health`, and answers every
 
 ## Run it
 
-You need JDK 21 and access to the two artifacts of the client repository. GitHub Packages asks for a token even to read a public package, so pick one:
+You need JDK 21 and access to the two artifacts of the client repository. GitHub Packages asks for a token even to read a public package (CI uses the workflow's own), so on your machine pick one:
 
 - **A token.** Create a personal access token (classic) with the `read:packages` scope and put it in `~/.gradle/gradle.properties`, never in this repository:
 
@@ -72,6 +72,8 @@ docker build --tag pursuitofwind-backend .
 ```bash
 docker run --rm --publish 8080:8080 pursuitofwind-backend
 ```
+
+The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_OPTS` in the `Dockerfile`); a host can set its own `JAVA_OPTS`.
 
 ## Layout
 
