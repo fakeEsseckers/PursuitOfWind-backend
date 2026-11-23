@@ -128,17 +128,10 @@ class ForecastTest {
                         ModelWindDto("icon", 3.0, 4.6, 2.0),
                         ModelWindDto("gfs", 3.9, 5.1, 359.0),
                     ),
-                    // The last hour the recording has: nothing is stamped at its end, so its gust is the stamp at its start.
-                    night(
-                        "2026-11-23T23:00:00Z",
-                        1.2,
-                        ModelWindDto("ecmwf", 2.6, 4.6, 0.0),
-                        ModelWindDto("icon", 2.8, 4.6, 0.0),
-                        ModelWindDto("gfs", 3.8, 5.1, 358.0),
-                    ),
                 ),
                 hours,
             )
+            // The recording's last hour, 23:00, is not given: nothing is stamped at its end to say how it gusted.
         }
 
     @Test
@@ -148,17 +141,19 @@ class ForecastTest {
             val spot = rider.spot()
 
             val insideAnHour = rider.hours(spot.id, "from=2026-07-18T10:40:00Z&hours=3")
-            val lastHours = rider.hours(spot.id, "from=${weather.firstHour + (11 * 24 - 2).hours}&hours=168")
+            val end = weather.firstHour + 11.days
+            val lastHours = rider.hours(spot.id, "from=${end - 3.hours}&hours=168")
             val past = rider.hours(spot.id, "from=2026-07-15T22:00:00Z&hours=2")
 
             assertEquals(List(3) { Instant.parse("2026-07-18T10:00:00Z") + it.hours }, insideAnHour.map { it.start })
-            assertEquals(2, lastHours.size)
+            // The source's last hour has no stamp at its end, so the one before it is the last there is to give.
+            assertEquals(listOf(end - 3.hours, end - 2.hours), lastHours.map { it.start })
             assertEquals(Instant.parse("2026-07-15T22:00:00Z"), past.first().start)
             assertEquals(168, rider.hours(spot.id, "hours=168").size)
         }
 
     @Test
-    fun `a model with nothing for an hour is left out of it, and an hour no model has is left out altogether`() =
+    fun `a model with nothing for an hour or for its end is left out of it, and an hour no model has is left out altogether`() =
         serverTest {
             val rider = rider()
             val spot = rider.spot()
@@ -168,7 +163,9 @@ class ForecastTest {
 
             val hours = rider.hours(spot.id)
 
-            assertEquals(listOf(3, 3, 2, 2), hours.map { it.models.size })
+            // GFS has a mean for the second hour and no gust stamped at its end; nobody has one at the fourth's.
+            assertEquals(listOf(now, now + 1.hours, now + 2.hours), hours.map { it.start })
+            assertEquals(listOf(3, 2, 2), hours.map { it.models.size })
             assertEquals(listOf("ecmwf", "icon"), hours.last().models.map { it.model })
         }
 
@@ -280,6 +277,8 @@ class ForecastTest {
         serverTest {
             val riders = List(8) { rider() }
             val spot = riders.first().spot()
+            // Long enough for all eight to be there before the first of them has its answer.
+            weather.takes = 300.milliseconds
 
             val forecasts = coroutineScope { riders.map { async { it.forecast(spot.id) } }.awaitAll() }
 

@@ -55,8 +55,8 @@ internal fun serverTest(
         Database(config).use { database ->
             database.migrate()
             val weather = FakeOpenMeteo(clock)
-            val api = Api(database, clock, Forecasts(database, OpenMeteo(weather.client)))
             application {
+                val api = Api(database, clock, Forecasts(database, OpenMeteo(weather.client), server = this))
                 module(api)
                 extra(api)
             }

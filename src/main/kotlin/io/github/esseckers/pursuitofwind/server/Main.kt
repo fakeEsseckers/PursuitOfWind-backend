@@ -40,7 +40,7 @@ internal fun server(config: ServerConfig): EmbeddedServer<NettyApplicationEngine
             weather.close()
             database.close()
         }
-        module(Api(database, Clock.System, Forecasts(database, OpenMeteo(weather))))
+        module(Api(database, Clock.System, Forecasts(database, OpenMeteo(weather), server = this)))
     }
 }
 

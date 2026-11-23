@@ -47,7 +47,8 @@ internal class ForecastSourceException(
  *   of each day.
  *
  * The source stamps what happened over an hour, its rain and its strongest gust, at the hour's end. The contract's
- * hour is named by its start, so those two are read from the stamp one hour later.
+ * hour is named by its start, so those two are read from the stamp one hour later, and an hour the source has no
+ * such stamp for, the last of a model's range or of the answer, is not given: nothing says what it was like.
  *
  * What the contract asks for and the source does not give is worked out here:
  * - `thunderRisk` is HIGH when the source itself forecasts a thunderstorm for the hour (WMO weather codes 95 to 99),
@@ -55,7 +56,9 @@ internal class ForecastSourceException(
  *   the decision engine, so it is kept for what the model says will happen, not for what could.
  * - `isDaylight` follows the contract: the hour starts at or after sunrise and ends no later than half an hour
  *   before sunset. The source gives a day without a night as sunrise at its start and sunset at its end, so days
- *   that touch are one stretch of light; a day without a sun as sunrise and sunset at the same moment.
+ *   that touch are one stretch of light; a day without a sun as sunrise and sunset at the same moment. Far from
+ *   Greenwich the light the answer begins in has its sunrise before the answer, and its hours read as dark; they
+ *   are hours of a local day that is over.
  */
 internal class OpenMeteo(
     private val client: HttpClient,
@@ -154,7 +157,7 @@ internal class OpenMeteo(
 
     /** What the hour that starts at [start] is like beside its wind, or null if the source lacks rain or temperature for it. */
     private fun Series.conditions(start: Long): Conditions? {
-        val precipitation = double("precipitation", start + HOUR_SECONDS) ?: double("precipitation", start)
+        val precipitation = double("precipitation", start + HOUR_SECONDS)
         val temperature = double("temperature_2m", start)
         return if (precipitation == null || temperature == null) {
             null
@@ -170,7 +173,7 @@ internal class OpenMeteo(
         start: Long,
     ): ModelWindDto? {
         val mean = double("wind_speed_10m_$theirs", start)
-        val gust = double("wind_gusts_10m_$theirs", start + HOUR_SECONDS) ?: double("wind_gusts_10m_$theirs", start)
+        val gust = double("wind_gusts_10m_$theirs", start + HOUR_SECONDS)
         val from = double("wind_direction_10m_$theirs", start)
         return if (mean == null || gust == null || from == null) {
             null

@@ -5,8 +5,13 @@ import io.github.esseckers.pursuitofwind.contract.ForecastHourDto
 import io.github.esseckers.pursuitofwind.contract.GeoPointDto
 import io.github.esseckers.pursuitofwind.server.api.unavailable
 import io.github.esseckers.pursuitofwind.server.db.Database
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.serialization.builtins.ListSerializer
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -25,20 +30,27 @@ import kotlin.time.toKotlinInstant
  *   with the places people look at, not with the people or the spots.
  * - When the source does not answer, the forecast that is there is given, however old: `generatedAt` says how old.
  *   Only a place that has no forecast at all is `503 SERVICE_UNAVAILABLE`.
- * - The source is asked once at a time for a place: callers that come while it is being asked wait for that answer.
- *   After a failure it is left alone for [LEFT_ALONE_AFTER_FAILURE], so a source that is down or has had enough of
- *   this server is not asked again by every call.
+ * - The source is asked once at a time for a place: calls that come while it is being asked wait for that answer.
+ *   The fetch belongs to the server, not to the call that set it off, so a call that goes away takes nothing from
+ *   the others. After a failure the place is left alone for [LEFT_ALONE_AFTER_FAILURE], so a source that is down or
+ *   has had enough of this server is not asked again by every call.
+ *
+ * @param server what fetches run in; they end when it does.
  */
 internal class Forecasts(
     private val database: Database,
     private val source: ForecastSource,
+    server: CoroutineScope,
 ) {
     private val log = LoggerFactory.getLogger(Forecasts::class.java)
+
+    /** One fetch that fails must not end the others, or the server. */
+    private val fetches = CoroutineScope(server.coroutineContext + SupervisorJob(server.coroutineContext[Job]) + Dispatchers.Default)
 
     /** The fetch that is under way for a place in this process, for everyone who asks meanwhile. */
     private val fetching = ConcurrentHashMap<Place, Deferred<Forecast?>>()
 
-    /** When the source last failed for a place. */
+    /** When a fetch last failed for a place. */
     private val failedAt = ConcurrentHashMap<Place, Instant>()
 
     /** The forecast of the place at [location]: every hour the source gave, and when it gave them. */
@@ -69,41 +81,53 @@ internal class Forecasts(
             ?.let { (it + LEFT_ALONE_AFTER_FAILURE - now).inWholeSeconds.coerceIn(1, LEFT_ALONE_AFTER_FAILURE.inWholeSeconds).toInt() }
             ?: 1
 
-    /** What the source has for [place] now, from the fetch already under way if there is one; null if it failed. */
+    /** What the fetch for [place] ends with, the one already under way if there is one; null if it got no forecast. */
     private suspend fun fetchedOnce(
         place: Place,
         now: Instant,
     ): Forecast? {
-        val mine = CompletableDeferred<Forecast?>()
+        val mine = fetches.async(start = CoroutineStart.LAZY) { settled(place, now) }
         val underWay = fetching.putIfAbsent(place, mine)
-        if (underWay != null) return underWay.await()
-        try {
-            // A call that looked before the last fetch ended and got here after it finds the matter settled.
-            val result = kept(place)?.takeIf { it.isFresh(now) } ?: if (isLeftAlone(place, now)) null else fetched(place, now)
-            mine.complete(result)
-            return result
-        } finally {
-            // Also when this call was cancelled half-way: those who waited for it go on without a new forecast.
-            mine.complete(null)
-            fetching.remove(place, mine)
+        if (underWay != null) {
+            mine.cancel()
+            return underWay.await()
         }
+        mine.invokeOnCompletion { fetching.remove(place, mine) }
+        return mine.await()
     }
+
+    /**
+     * The forecast for [place] as things stand once nobody else is fetching it. A call that looked before the last
+     * fetch ended and got here after it finds the matter settled, one way or the other, and the source is not asked.
+     */
+    private suspend fun settled(
+        place: Place,
+        now: Instant,
+    ): Forecast? = kept(place)?.takeIf { it.isFresh(now) } ?: if (isLeftAlone(place, now)) null else fetched(place, now)
 
     private suspend fun fetched(
         place: Place,
         now: Instant,
-    ): Forecast? =
+    ): Forecast? {
+        var fetched: Forecast? = null
         try {
-            Forecast(now, source.hours(place)).also {
-                keep(place, it)
-                failedAt.remove(place)
-            }
+            fetched = Forecast(now, source.hours(place)).also { keep(place, it) }
         } catch (e: ForecastSourceException) {
             log.warn("No forecast for {}: {}", place, e.message)
-            failedAt.values.removeIf { it <= now - LEFT_ALONE_AFTER_FAILURE }
-            failedAt[place] = now
-            null
+        } finally {
+            // Whatever stood in the way, the source or the database, the place is left alone for a while.
+            if (fetched == null) leaveAlone(place, now) else failedAt.remove(place)
         }
+        return fetched
+    }
+
+    private fun leaveAlone(
+        place: Place,
+        now: Instant,
+    ) {
+        failedAt.values.removeIf { it <= now - LEFT_ALONE_AFTER_FAILURE }
+        failedAt[place] = now
+    }
 
     /** The forecast kept for [place]. One that can no longer be read, after a change of the contract, is none. */
     private suspend fun kept(place: Place): Forecast? =
@@ -143,9 +167,17 @@ internal class Forecasts(
                 .bind("at", forecast.fetchedAt.toJavaInstant())
                 .bind("hours", ContractJson.encodeToString(HOURS, forecast.hours))
                 .execute()
+        }
+        // On its own, and past the rows another fetch is writing: two places kept at one moment, each with an old
+        // row, would otherwise wait for each other for ever.
+        database.transaction { handle ->
             handle
-                .createUpdate("delete from forecasts where fetched_at <= :old")
-                .bind("old", (forecast.fetchedAt - FORGOTTEN_AFTER).toJavaInstant())
+                .createUpdate(
+                    """
+                    delete from forecasts
+                    where place in (select place from forecasts where fetched_at <= :old for update skip locked)
+                    """,
+                ).bind("old", (forecast.fetchedAt - FORGOTTEN_AFTER).toJavaInstant())
                 .execute()
         }
     }
