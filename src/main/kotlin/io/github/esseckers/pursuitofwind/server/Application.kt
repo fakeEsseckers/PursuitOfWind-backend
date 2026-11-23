@@ -9,6 +9,7 @@ import io.github.esseckers.pursuitofwind.server.api.crewRoutes
 import io.github.esseckers.pursuitofwind.server.api.forecastRoutes
 import io.github.esseckers.pursuitofwind.server.api.profileRoutes
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
+import io.github.esseckers.pursuitofwind.server.api.rideRoutes
 import io.github.esseckers.pursuitofwind.server.api.spotRoutes
 import io.github.esseckers.pursuitofwind.server.api.unavailable
 import io.ktor.http.ContentType
@@ -73,6 +74,7 @@ internal fun Application.module(api: Api) {
         spotRoutes(api)
         forecastRoutes(api)
         crewRoutes(api)
+        rideRoutes(api)
         // For the host's checks: the process is up and its database answers. Not part of the API contract.
         get(HEALTH_PATH) {
             if (api.database.isUp()) {
