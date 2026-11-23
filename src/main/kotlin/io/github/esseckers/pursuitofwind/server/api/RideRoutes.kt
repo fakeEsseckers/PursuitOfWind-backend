@@ -57,8 +57,7 @@ private fun Change.createRide(): Answer {
     val request = body(CreateRideRequestDto.serializer())
     // What is not an id cannot be a spot, and is not asked about.
     check422(isId(request.spotId) && Spots.find(handle, request.spotId) != null) { "spotId is not a spot of the catalog." }
-    RideRules.check(request)
-    val ride = Rides.create(handle, crew.id, userId, request, now)
+    val ride = Rides.create(handle, crew.id, userId, RideRules.plan(request), now)
     CrewFeed.add(handle, crew.id) { id -> RideCreatedEventDto(id, crew.id, now, ride.driver, ride) }
     return Answer.json(RideDto.serializer(), ride, HttpStatusCode.Created)
 }

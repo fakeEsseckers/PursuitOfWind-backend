@@ -21,10 +21,11 @@ create table rides (
 
 create index rides_by_crew on rides (crew_id, window_end);
 
--- Who has a seat in a ride (Ride.passengers). position is the order the seats were taken in.
+-- Who has a seat in a ride (Ride.passengers). position is the order the seats were taken in. As with the members of
+-- a crew, a seat does not go with its user: a ride changes only through a change that is told in the feed.
 create table ride_passengers (
     ride_id text collate "C" not null references rides (id) on delete cascade,
-    user_id text not null references users (id) on delete cascade,
+    user_id text not null references users (id),
     position bigint generated always as identity,
     primary key (ride_id, user_id)
 );

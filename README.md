@@ -8,7 +8,7 @@ It implements the API the app already speaks. The contract (`api/openapi.yaml`),
 
 ## Status
 
-The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), keeps crews that riders create and join by invite code, with their members and their feed of events (`/v1/crews`, `/v1/me/crews`), and the rides crew members offer each other, with their seats (`/v1/crews/{crewId}/rides`, `/v1/rides`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), keeps crews that riders create and join by invite code, with their members and their feed of events (`/v1/crews`, `/v1/me/crews`), and the rides crew members offer each other, with their seats (`/v1/crews/{crewId}/rides`, `/v1/rides/{rideId}`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
 
 ## Weather data
 

@@ -34,6 +34,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.microseconds
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -195,6 +197,14 @@ class RideTest {
                             windowEnd = Instant.parse("+12000-01-01T04:00:00Z"),
                         ),
                     "leaving before any calendar" to saturday.copy(departAt = Instant.parse("-0001-01-01T00:00:00Z")),
+                    "a window shorter than the server tells moments apart" to
+                        saturday.copy(windowEnd = saturday.windowStart + 900.microseconds),
+                    "leaving after a start the server keeps as the same moment" to
+                        saturday.copy(
+                            windowStart = saturday.windowStart + 100.microseconds,
+                            departAt =
+                                saturday.windowStart + 1.milliseconds,
+                        ),
                 )
 
             for ((what, plan) in wrong) {
@@ -222,6 +232,10 @@ class RideTest {
                     Triple(ride.departAt, ride.meetingPoint, ride.seatsFree),
                 )
             }
+            // A moment is kept to the millisecond, and comes back as it is kept.
+            val precise = alex.offered(scene, saturday.copy(departAt = Instant.parse("2026-07-18T08:30:00.123456789Z")))
+            assertEquals(Instant.parse("2026-07-18T08:30:00.123Z"), precise.departAt)
+            assertEquals(precise, alex.ride(precise.id).json(RideDto.serializer()))
         }
 
     @Test
@@ -341,7 +355,10 @@ class RideTest {
                 events.last(),
             )
             assertEquals(1, events.count { it is SeatReleasedEventDto })
-            assertEquals(HttpStatusCode.Created, dana.takeSeat(ride.id).status)
+            // Who comes back takes the last seat, not the one they had.
+            val back = dana.takeSeat(ride.id)
+            assertEquals(HttpStatusCode.Created, back.status)
+            assertEquals(listOf(eli.person, dana.person), back.json(RideDto.serializer()).passengers)
         }
 
     @Test
