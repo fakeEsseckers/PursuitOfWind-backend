@@ -25,14 +25,18 @@ internal class Rider(
 ) {
     val userId: String get() = tokens.userId
 
-    /** Calls [operation] with [body] as JSON, and with [idempotencyKey] if one is given. */
+    /**
+     * Calls [operation] with [body] as JSON, with [idempotencyKey] if one is given, and with [query] (`limit=2`) after
+     * the path if there is one.
+     */
     suspend fun call(
         operation: ApiRoute,
         body: String? = null,
         idempotencyKey: String? = null,
         vararg pathParameters: String,
+        query: String? = null,
     ): HttpResponse =
-        client.request(operation.pathWith(*pathParameters)) {
+        client.request(operation.pathWith(*pathParameters) + if (query == null) "" else "?$query") {
             method = HttpMethod.parse(operation.method)
             bearerAuth(tokens.accessToken)
             if (idempotencyKey != null) header(ApiHeaders.IDEMPOTENCY_KEY, idempotencyKey)

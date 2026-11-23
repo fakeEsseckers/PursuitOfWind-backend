@@ -2,6 +2,7 @@ package io.github.esseckers.pursuitofwind.server.api
 
 import io.github.esseckers.pursuitofwind.contract.ApiLimits
 import io.github.esseckers.pursuitofwind.contract.ContractJson
+import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.contentLength
 import io.ktor.server.request.receiveChannel
@@ -38,6 +39,17 @@ internal fun <T> decoded(
     } catch (e: IllegalArgumentException) {
         throw invalid("The body is not valid JSON for this operation.", e)
     }
+
+/** The whole number the query parameter [name] gives, within [range]; [default] when the call does not give it. */
+internal fun intQuery(
+    parameters: Parameters,
+    name: String,
+    range: IntRange,
+    default: Int,
+): Int {
+    val raw = parameters[name] ?: return default
+    return raw.toIntOrNull()?.takeIf { it in range } ?: throw invalid("$name must be an integer from ${range.first} to ${range.last}.")
+}
 
 /**
  * The contract's rule for a line of text a person types (`minLength: 1`, `maxLength` in code points, `pattern: '\S'`):

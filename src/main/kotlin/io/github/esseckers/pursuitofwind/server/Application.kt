@@ -7,6 +7,7 @@ import io.github.esseckers.pursuitofwind.server.api.ProblemException
 import io.github.esseckers.pursuitofwind.server.api.authRoutes
 import io.github.esseckers.pursuitofwind.server.api.profileRoutes
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
+import io.github.esseckers.pursuitofwind.server.api.spotRoutes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -66,6 +67,7 @@ internal fun Application.module(api: Api) {
     routing {
         authRoutes(api)
         profileRoutes(api)
+        spotRoutes(api)
         // For the host's checks: the process is up and its database answers. Not part of the API contract.
         get(HEALTH_PATH) {
             if (api.database.isUp()) {

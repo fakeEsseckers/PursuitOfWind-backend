@@ -31,7 +31,10 @@ internal class Api(
     val database: Database,
     val clock: Clock,
     val sessions: Sessions = Sessions(database, clock),
-)
+) {
+    /** The time as the API and the database both keep it: to the millisecond. */
+    fun now(): Instant = Instant.fromEpochMilliseconds(clock.now().toEpochMilliseconds())
+}
 
 /** Registers the handler of [operation], one of the two the contract opens to callers without a token. */
 internal fun Route.open(
@@ -74,7 +77,7 @@ internal fun Route.changing(
         handle {
             val userId = api.userOf(call)
             val body = call.bodyText()
-            val now = api.clock.now()
+            val now = api.now()
             val parameters = call.parameters
             val path = operation.pathOf(parameters)
             val request =
