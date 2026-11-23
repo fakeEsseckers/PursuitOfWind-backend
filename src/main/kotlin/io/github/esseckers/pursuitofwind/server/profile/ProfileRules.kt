@@ -3,6 +3,7 @@ package io.github.esseckers.pursuitofwind.server.profile
 import io.github.esseckers.pursuitofwind.contract.ApiLimits
 import io.github.esseckers.pursuitofwind.contract.RiderProfileDto
 import io.github.esseckers.pursuitofwind.server.api.check422
+import io.github.esseckers.pursuitofwind.server.api.requireText
 
 /**
  * The limits of the contract's `RiderProfile` and the rules between its fields that the schema states in words.
@@ -18,7 +19,7 @@ internal object ProfileRules {
     private val TO_HOURS = limits.RIDING_TO_HOUR_MIN..limits.RIDING_TO_HOUR_MAX
 
     fun check(profile: RiderProfileDto) {
-        name(profile.displayName)
+        requireText(profile.displayName, "displayName", limits.DISPLAY_NAME_MAX_LENGTH)
         check422(
             profile.weightKg in WEIGHT_KG,
         ) { "weightKg must be between ${WEIGHT_KG.start.plain()} and ${WEIGHT_KG.endInclusive.plain()}." }
@@ -31,14 +32,6 @@ internal object ProfileRules {
         check422(profile.ridingFromHour in FROM_HOURS) { "ridingFromHour must be from 0 to ${FROM_HOURS.last}." }
         check422(profile.ridingToHour in TO_HOURS) { "ridingToHour must be from ${TO_HOURS.first} to ${TO_HOURS.last}." }
         check422(profile.ridingFromHour < profile.ridingToHour) { "ridingFromHour must be below ridingToHour." }
-    }
-
-    /** The schema's `minLength: 1`, `maxLength` in code points and `pattern: '\S'`. */
-    private fun name(displayName: String) {
-        val max = limits.DISPLAY_NAME_MAX_LENGTH
-        check422(displayName.any { !it.isWhitespace() } && ApiLimits.lengthOf(displayName) <= max) {
-            "displayName must have 1 to $max characters and not only spaces."
-        }
     }
 
     private fun quiver(sizesM2: List<Double>) {

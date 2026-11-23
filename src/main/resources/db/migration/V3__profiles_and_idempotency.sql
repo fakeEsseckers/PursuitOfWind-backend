@@ -25,7 +25,7 @@ create table idempotency_keys (
     path text not null,
     key uuid not null,
     request_hash bytea not null check (octet_length(request_hash) = 32),
-    status integer,
+    status integer not null,
     body text,
     created_at timestamptz not null,
     primary key (user_id, method, path, key)

@@ -7,21 +7,32 @@ import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.contract.RiderProfileDto
 import io.github.esseckers.pursuitofwind.contract.SkillLevelDto
 import io.github.esseckers.pursuitofwind.contract.WindUnitDto
+import io.github.esseckers.pursuitofwind.server.api.Answer
+import io.github.esseckers.pursuitofwind.server.api.Api
+import io.github.esseckers.pursuitofwind.server.api.changing
+import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.testing.Rider
+import io.github.esseckers.pursuitofwind.server.testing.TestPostgres
 import io.github.esseckers.pursuitofwind.server.testing.json
 import io.github.esseckers.pursuitofwind.server.testing.problem
 import io.github.esseckers.pursuitofwind.server.testing.rider
 import io.github.esseckers.pursuitofwind.server.testing.serverTest
 import io.github.esseckers.pursuitofwind.server.testing.signedInAgain
+import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.Application
+import io.ktor.server.routing.routing
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -46,6 +57,7 @@ class ProfileTest {
         )
     private val firstKey = "3f9d6c1e-8a42-4f4b-9d0e-6b1c2a7e5f10"
     private val secondKey = "7c1b2a90-5d3e-4f6a-8b7c-9d0e1f2a3b4c"
+    private val keys = "${Database.SCHEMA}.idempotency_keys"
 
     private fun RiderProfileDto.asJson(): String = ContractJson.encodeToString(RiderProfileDto.serializer(), this)
 
@@ -130,6 +142,7 @@ class ProfileTest {
                     "a name of spaces" to alex.copy(displayName = "   "),
                     "an empty name" to alex.copy(displayName = ""),
                     "a name of 41 characters" to alex.copy(displayName = "a".repeat(41)),
+                    "a name with a character no database keeps" to alex.copy(displayName = "Al\u0000ex"),
                     "too light" to alex.copy(weightKg = 29.9),
                     "too heavy" to alex.copy(weightKg = 200.1),
                     "eleven kites" to alex.copy(quiverM2 = (1..11).map { it.toDouble() }),
@@ -238,15 +251,118 @@ class ProfileTest {
         }
 
     @Test
+    fun `a key is the same key in capitals and at another spelling of the path`() =
+        serverTest {
+            val rider = rider()
+            rider.save(alex, firstKey)
+
+            val inCapitals = rider.save(alex, firstKey.uppercase())
+            val otherSpelling =
+                client.put("/v1/me/%70rofile") {
+                    bearerAuth(rider.tokens.accessToken)
+                    header(ApiHeaders.IDEMPOTENCY_KEY, firstKey)
+                    setBody(alex.asJson())
+                }
+
+            assertEquals("true", inCapitals.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            assertEquals("true", otherSpelling.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            assertEquals(listOf("1"), TestPostgres.strings(database, "select count(*) from $keys"))
+        }
+
+    @Test
+    fun `a key that has had its day is free however many others wait to be removed`() =
+        serverTest {
+            val morning = rider()
+            morning.save(alex, firstKey)
+            TestPostgres.execute(
+                database,
+                """
+                insert into $keys (user_id, method, path, key, request_hash, status, created_at)
+                select user_id, 'PUT', '/v1/old/' || n, key, request_hash, 200, created_at
+                from $keys, generate_series(1, 250) as n
+                """,
+            )
+
+            clock.now += 24.hours
+            val nextDay = signedInAgain(morning).save(alex.copy(weightKg = 80.0), firstKey)
+
+            assertEquals(HttpStatusCode.OK, nextDay.status)
+            assertNull(nextDay.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            assertEquals(listOf("151"), TestPostgres.strings(database, "select count(*) from $keys"))
+        }
+
+    @Test
+    fun `a change that broke inside is not kept, and runs again when it is sent again`() {
+        var calls = 0
+        val breaksOnce: Application.(Api) -> Unit = { api ->
+            routing {
+                changing(api, ApiRoute.CREATE_CREW) {
+                    calls++
+                    check(calls > 1) { "the first call breaks" }
+                    Answer.noContent
+                }
+            }
+        }
+        serverTest(breaksOnce) {
+            val rider = rider()
+
+            val broken = rider.call(ApiRoute.CREATE_CREW, "{}", firstKey)
+            val again = rider.call(ApiRoute.CREATE_CREW, "{}", firstKey)
+            val replayed = rider.call(ApiRoute.CREATE_CREW, "{}", firstKey)
+
+            assertEquals(HttpStatusCode.InternalServerError, broken.status)
+            assertEquals(HttpStatusCode.NoContent, again.status)
+            assertNull(again.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            assertEquals(HttpStatusCode.NoContent to "true", replayed.status to replayed.headers[ApiHeaders.IDEMPOTENT_REPLAYED])
+            assertEquals(2, calls)
+        }
+    }
+
+    @Test
     fun `one save sent eight times at the same moment happens once`() =
         serverTest {
             val rider = rider()
+            // Nobody can touch the keys until the test lets go, so the calls pile up behind it and then go together.
+            val everyone = TestPostgres.holding(database, "lock table $keys in access exclusive mode")
+            val waiting = "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'"
 
-            val responses = coroutineScope { List(8) { async { rider.save(alex, firstKey) } }.awaitAll() }
+            val responses =
+                coroutineScope {
+                    val calls = List(8) { async { rider.save(alex, firstKey) } }
+                    var polls = 0
+                    while (TestPostgres.strings(database, waiting).single().toInt() < 5 && polls++ < 500) delay(20)
+                    assertEquals(listOf("5"), TestPostgres.strings(database, waiting))
+                    everyone.close()
+                    calls.awaitAll()
+                }
 
             assertEquals(List(8) { HttpStatusCode.OK }, responses.map { it.status })
             assertEquals(7, responses.count { it.headers[ApiHeaders.IDEMPOTENT_REPLAYED] == "true" })
             assertEquals(1, responses.map { it.bodyAsText() }.toSet().size)
             assertEquals("application/json", responses.first().headers[HttpHeaders.ContentType])
+            assertEquals(listOf("1"), TestPostgres.strings(database, "select count(*) from $keys"))
+        }
+
+    @Test
+    fun `a body larger than the server reads is refused without being read to its end`() =
+        serverTest {
+            val rider = rider()
+
+            rider.call(ApiRoute.PUT_PROFILE, alex.asJson() + " ".repeat(64 * 1024)).assertInvalid("a body over the limit")
+
+            assertEquals(HttpStatusCode.NotFound, rider.profile().status)
+        }
+
+    @Test
+    fun `a call that meets the database gone is told to come again`() =
+        serverTest {
+            val rider = rider()
+            TestPostgres.drop(database)
+
+            val response = rider.profile()
+
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+            assertEquals(ProblemCode.SERVICE_UNAVAILABLE, response.problem().code)
+            assertEquals("1", response.headers[ApiHeaders.RETRY_AFTER])
         }
 }

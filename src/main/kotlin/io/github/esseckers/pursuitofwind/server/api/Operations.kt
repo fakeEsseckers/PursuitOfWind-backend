@@ -11,8 +11,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.path
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -75,13 +73,14 @@ internal fun Route.changing(
     route(operation.path, HttpMethod.parse(operation.method)) {
         handle {
             val userId = api.userOf(call)
-            val body = call.receiveText()
+            val body = call.bodyText()
             val now = api.clock.now()
+            val parameters = call.parameters
+            val path = operation.pathOf(parameters)
             val request =
                 call.request.headers[ApiHeaders.IDEMPOTENCY_KEY]?.let {
-                    Idempotency.request(userId, operation.method, call.request.path(), it, body)
+                    Idempotency.request(userId, operation.method, path, it, body)
                 }
-            val parameters = call.parameters
             val answer =
                 api.database.transaction { handle ->
                     Idempotency.once(handle, request, now) { Change(userId, handle, body, parameters, now).handler() }
@@ -108,12 +107,7 @@ internal class Change(
     val now: Instant,
 ) {
     /** The body as the contract's [type]; a body that is not that is `422 VALIDATION_FAILED`. */
-    fun <T> body(type: DeserializationStrategy<T>): T =
-        try {
-            ContractJson.decodeFromString(type, body)
-        } catch (e: IllegalArgumentException) {
-            throw invalid("The body is not valid JSON for this operation.", e)
-        }
+    fun <T> body(type: DeserializationStrategy<T>): T = decoded(type, body)
 }
 
 /**
@@ -142,6 +136,15 @@ internal data class Answer(
 private suspend fun ApplicationCall.respondAnswer(answer: Answer) {
     if (answer.json == null) respond(answer.status) else respondText(answer.json, ContentType.Application.Json, answer.status)
 }
+
+/**
+ * The path of a call to this operation as the contract writes it, with the call's own values for its parameters,
+ * whatever way the call spelled it: two spellings of one path are one path.
+ */
+private fun ApiRoute.pathOf(parameters: Parameters): String =
+    path.split('/').joinToString("/") { segment ->
+        if (segment.startsWith('{')) parameters[segment.removeSurrounding("{", "}")].orEmpty() else segment
+    }
 
 /** The id of the user [call] is made as; a call without an access token that works is `401 UNAUTHORIZED`. */
 private suspend fun Api.userOf(call: ApplicationCall): String {

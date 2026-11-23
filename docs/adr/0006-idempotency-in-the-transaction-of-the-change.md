@@ -13,9 +13,9 @@ The app's in-app fake backend does this in memory, one request at a time. A serv
 
 - **A handler that changes something runs inside one database transaction and returns its answer** (`changing`, `Answer`). It does not write to the call: the answer is written after the transaction has committed.
 - **The key is claimed, and the answer kept, in that same transaction.** A row for (user, method, path, key) is inserted first; the change runs; the answer is stored in the row; all of it commits or none of it does. There is no moment at which the change is there and its record is not.
-- **Two calls with one key at the same moment cannot both run.** The second insert waits for the first transaction, then finds the row and replays its answer.
+- **Two calls with one key at the same moment cannot both run.** The second insert waits for the first transaction, then finds the row and replays its answer. This rests on PostgreSQL's default isolation, read committed; under a stricter one the waiting insert would fail instead.
 - **The request is recognised by the SHA-256 of its body.** Another body under the same key is refused.
-- **A key belongs to one user, method and path, for 24 hours**, as in the fake. Keys older than that are removed, a batch at a time, whenever a key is claimed.
+- **A key belongs to one user, method and path, for 24 hours**, as in the fake. The path is the contract's, with the call's values for its parameters, so two spellings of one path are one key. A key that has had its day is free at once; other old keys are removed a batch at a time, whenever a key is claimed.
 - **Only a call that succeeded is kept.** A call that failed has changed nothing; its transaction rolls back, key included, and a retry runs again.
 - **A key that is not a UUID is `422 VALIDATION_FAILED`.** A call without a key just runs.
 
@@ -32,4 +32,5 @@ The app's in-app fake backend does this in memory, one request at a time. A serv
 - Positive: handlers that change something share one shape, and cannot answer before their change is committed.
 - Negative: such a handler cannot suspend, call another service or read the call directly; what it needs from the call is handed to it.
 - Negative: where the fake replays a failed answer, the server runs the call again. The outcomes differ only when something changed in between.
+- Negative: a call waiting for another with the same key holds a database connection while it waits. Enough of them use up the pool, and other calls are then told `503 SERVICE_UNAVAILABLE` until the first one finishes.
 - Revisit when: a change has to call another service (a payment, a push) inside its handler.

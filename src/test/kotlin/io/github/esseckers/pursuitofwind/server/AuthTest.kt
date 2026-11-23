@@ -3,6 +3,7 @@ package io.github.esseckers.pursuitofwind.server
 import io.github.esseckers.pursuitofwind.contract.ApiRoute
 import io.github.esseckers.pursuitofwind.contract.AuthTokensDto
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
+import io.github.esseckers.pursuitofwind.contract.RiderProfileDto
 import io.github.esseckers.pursuitofwind.server.auth.Sessions
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.github.esseckers.pursuitofwind.server.testing.TestPostgres
@@ -14,6 +15,7 @@ import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -66,6 +68,25 @@ class AuthTest {
     private suspend fun TestServer.whoAmI(accessToken: String?): HttpResponse =
         client.get(ApiRoute.GET_PROFILE.path) { if (accessToken != null) bearerAuth(accessToken) }
 
+    /** Saves a profile under [name] with [accessToken], so that a later call can be told whose it was made as. */
+    private suspend fun TestServer.callMe(
+        accessToken: String,
+        name: String,
+    ) {
+        val saved =
+            client.put(ApiRoute.PUT_PROFILE.path) {
+                bearerAuth(accessToken)
+                setBody(
+                    """{"displayName":"$name","weightKg":80,"level":"BEGINNER","quiverM2":[],"minSessionMinutes":60,""" +
+                        """"maxDriveMinutes":60,"windUnit":"KNOTS"}""",
+                )
+            }
+        assertEquals(HttpStatusCode.OK, saved.status)
+    }
+
+    /** The name of the profile the call with [accessToken] is made as. */
+    private suspend fun TestServer.nameOf(accessToken: String): String = whoAmI(accessToken).json(RiderProfileDto.serializer()).displayName
+
     /** The call got past the check of its token: this user has no profile yet, which only a signed-in user is told. */
     private suspend fun HttpResponse.assertSignedIn() {
         assertEquals(HttpStatusCode.NotFound, status)
@@ -108,7 +129,9 @@ class AuthTest {
             assertEquals(first.userId, second.userId)
             assertNotEquals(first.accessToken, second.accessToken)
             assertNotEquals(first.refreshToken, second.refreshToken)
-            whoAmI(first.accessToken).assertSignedIn()
+            callMe(first.accessToken, "Alex")
+            assertEquals("Alex", nameOf(second.accessToken))
+            assertEquals("Alex", nameOf(first.accessToken))
             assertEquals(HttpStatusCode.OK, refresh(first.refreshToken).status)
         }
 
@@ -221,15 +244,18 @@ class AuthTest {
         }
 
     @Test
-    fun `an operation for signed-in users takes a token that works, however the header is written, and no other`() =
+    fun `a call is made as the user its token was issued to, however the header is written, and as nobody without one`() =
         serverTest {
             val alex = tokens(phone)
             val dana = tokens(tablet)
 
-            whoAmI(alex.accessToken).assertSignedIn()
-            whoAmI(dana.accessToken).assertSignedIn()
-            whoAmIWith("bearer ${alex.accessToken}").assertSignedIn()
-            whoAmIWith("Bearer   ${alex.accessToken} ").assertSignedIn()
+            callMe(alex.accessToken, "Alex")
+            callMe(dana.accessToken, "Dana")
+
+            assertEquals("Alex", nameOf(alex.accessToken))
+            assertEquals("Dana", nameOf(dana.accessToken))
+            assertEquals("Alex", whoAmIWith("bearer ${alex.accessToken}").json(RiderProfileDto.serializer()).displayName)
+            assertEquals("Alex", whoAmIWith("Bearer   ${alex.accessToken} ").json(RiderProfileDto.serializer()).displayName)
 
             val invalidToken = """Bearer error="invalid_token""""
             whoAmI(accessToken = null).assertUnauthorized("Bearer")

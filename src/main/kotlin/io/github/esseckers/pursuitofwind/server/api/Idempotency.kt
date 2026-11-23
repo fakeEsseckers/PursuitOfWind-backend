@@ -17,7 +17,8 @@ import kotlin.time.toJavaInstant
  *
  * - A key belongs to one user, method and path, for [RETENTION].
  * - The key is claimed and the answer kept in the transaction of the change itself. Two calls with one key at the
- *   same moment therefore cannot both run: the second waits for the first to commit, then gets its answer.
+ *   same moment therefore cannot both run: the second waits for the first to commit, then gets its answer. That
+ *   relies on PostgreSQL's default isolation, read committed, where the waiting insert sees the row that committed.
  * - The same key with another body is `422 IDEMPOTENCY_KEY_REUSED`.
  * - Only a call that succeeded is kept. One that failed changed nothing, rolls back with its key, and runs again when
  *   it is retried.
@@ -26,6 +27,9 @@ internal object Idempotency {
     val RETENTION = 24.hours
     private const val EXPIRED_REMOVED_AT_ONCE = 100
     private const val SAME_KEY = "user_id = :user and method = :method and path = :path and key = :key"
+
+    /** The status of a row between its claim and its answer; no row is ever committed with it. */
+    private const val NOT_ANSWERED = 0
     private val UUID_FORM = Regex("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
     /** A call that came with a key: whose it is, what it asks for, and what it said. */
@@ -87,12 +91,18 @@ internal object Idempotency {
         request: Request,
         now: Instant,
     ): Boolean {
+        // This key first, whatever else is waiting to be removed: a key that has had its day must be free now.
+        handle
+            .createUpdate("delete from idempotency_keys where $SAME_KEY and created_at <= :cutoff")
+            .bindKey(request)
+            .bind("cutoff", (now - RETENTION).toJavaInstant())
+            .execute()
         removeExpired(handle, now)
         return handle
             .createUpdate(
                 """
-                insert into idempotency_keys (user_id, method, path, key, request_hash, created_at)
-                values (:user, :method, :path, :key, :hash, :now)
+                insert into idempotency_keys (user_id, method, path, key, request_hash, status, created_at)
+                values (:user, :method, :path, :key, :hash, $NOT_ANSWERED, :now)
                 on conflict do nothing
                 """,
             ).bindKey(request)

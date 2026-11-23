@@ -6,7 +6,6 @@ import io.github.esseckers.pursuitofwind.contract.AuthTokensDto
 import io.github.esseckers.pursuitofwind.contract.RefreshTokensRequestDto
 import io.github.esseckers.pursuitofwind.server.auth.Sessions
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.request.receive
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import java.util.UUID
@@ -19,7 +18,7 @@ internal fun Route.authRoutes(api: Api) {
 
 /** `201` with tokens for an installation seen for the first time, `200` with new tokens for one seen before. */
 private suspend fun RoutingContext.signIn(sessions: Sessions) {
-    val request = call.receive<AnonymousSignInRequestDto>()
+    val request = call.body(AnonymousSignInRequestDto.serializer())
     val installationId = uuidOrNull(request.installationId) ?: throw invalid("installationId must be a UUID.")
     val signedIn = sessions.signIn(installationId, request.platform)
     call.respondJson(AuthTokensDto.serializer(), signedIn.tokens, if (signedIn.newUser) HttpStatusCode.Created else HttpStatusCode.OK)
@@ -27,7 +26,7 @@ private suspend fun RoutingContext.signIn(sessions: Sessions) {
 
 /** The next pair for a refresh token that works; `401` for one that does not, which sends the app back to sign-in. */
 private suspend fun RoutingContext.refresh(sessions: Sessions) {
-    val request = call.receive<RefreshTokensRequestDto>()
+    val request = call.body(RefreshTokensRequestDto.serializer())
     if (request.refreshToken.isEmpty()) throw invalid("refreshToken must not be empty.")
     call.respondJson(AuthTokensDto.serializer(), sessions.refresh(request.refreshToken) ?: throw unauthorized(tokenSent = true))
 }

@@ -2,6 +2,7 @@ package io.github.esseckers.pursuitofwind.server.testing
 
 import io.github.esseckers.pursuitofwind.server.db.DatabaseConfig
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
+import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -43,6 +44,20 @@ internal object TestPostgres {
         DriverManager.getConnection(database.jdbcUrl, database.user, database.password).use { connection ->
             connection.createStatement().use { it.execute(sql) }
         }
+    }
+
+    /**
+     * Runs [sql] in [database] in a transaction that stays open, with whatever it locked, until the connection
+     * that comes back is closed.
+     */
+    fun holding(
+        database: DatabaseConfig,
+        sql: String,
+    ): Connection {
+        val connection = DriverManager.getConnection(database.jdbcUrl, database.user, database.password)
+        connection.autoCommit = false
+        connection.createStatement().use { it.execute(sql) }
+        return connection
     }
 
     /** The first column of what [sql] finds in [database]. */

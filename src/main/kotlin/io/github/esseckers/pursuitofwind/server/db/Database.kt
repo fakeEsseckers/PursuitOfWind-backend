@@ -76,6 +76,9 @@ internal class Database(
     /**
      * Runs [block] in one transaction, off the request threads. What it returns is the result; an exception rolls
      * everything back and goes on to the caller. Queries are SQL as written, through the [Handle] (ADR 0004).
+     *
+     * The isolation is PostgreSQL's default, read committed, and code relies on it: an insert that waited for
+     * another transaction then sees what that one committed (sign-in, `Idempotency-Key`).
      */
     suspend fun <T> transaction(block: (Handle) -> T): T = withContext(Dispatchers.IO) { jdbi.inTransaction<T, Exception> { block(it) } }
 

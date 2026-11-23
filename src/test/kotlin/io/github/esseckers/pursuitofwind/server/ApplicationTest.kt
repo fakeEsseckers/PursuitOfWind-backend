@@ -2,6 +2,8 @@ package io.github.esseckers.pursuitofwind.server
 
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.contract.ProblemDto
+import io.github.esseckers.pursuitofwind.server.api.body
+import io.github.esseckers.pursuitofwind.server.api.respondJson
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
 import io.github.esseckers.pursuitofwind.server.testing.TestPostgres
 import io.github.esseckers.pursuitofwind.server.testing.problem
@@ -16,8 +18,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
-import io.ktor.server.request.receive
-import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -109,7 +109,9 @@ class ApplicationTest {
 
     @Test
     fun `a body the server cannot read is a validation problem`() =
-        serverTest(extra = { routing { post("/v1/echo") { call.respond(call.receive<ProblemDto>()) } } }) {
+        serverTest(
+            extra = { routing { post("/v1/echo") { call.respondJson(ProblemDto.serializer(), call.body(ProblemDto.serializer())) } } },
+        ) {
             val unreadable =
                 listOf(
                     ContentType.Application.Json to "{broken",

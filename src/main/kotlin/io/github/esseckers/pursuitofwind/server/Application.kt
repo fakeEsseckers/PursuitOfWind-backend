@@ -1,6 +1,6 @@
 package io.github.esseckers.pursuitofwind.server
 
-import io.github.esseckers.pursuitofwind.contract.ContractJson
+import io.github.esseckers.pursuitofwind.contract.ApiHeaders
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.server.api.Api
 import io.github.esseckers.pursuitofwind.server.api.ProblemException
@@ -10,7 +10,6 @@ import io.github.esseckers.pursuitofwind.server.api.respondProblem
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
@@ -21,13 +20,16 @@ import io.ktor.server.plugins.autohead.AutoHeadResponse
 import io.ktor.server.plugins.callid.CallId
 import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.calllogging.CallLogging
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.plugins.statuspages.StatusPagesConfig
 import io.ktor.server.request.path
+import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import org.jdbi.v3.core.JdbiException
+import java.sql.SQLException
+import java.sql.SQLTransientConnectionException
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -38,7 +40,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * [api] is what the handlers share: the database, the sessions, and the clock, which is the server's only source of
  * the time, so that a test can say what time it is.
  *
- * - JSON is the contract's own ([ContractJson]), so the server reads and writes exactly what the app does.
+ * - JSON is the contract's own, read and written by the server itself (`body`, `respondJson`), so it reads and
+ *   writes exactly what the app does whatever the call's headers say.
  * - Every failure is a problem body with a `code` ([problems]).
  * - Every request carries an id (`X-Request-Id`, taken from the request or made here) into the logs and the response.
  */
@@ -57,9 +60,6 @@ internal fun Application.module(api: Api) {
     }
     // Uptime checks often ask with HEAD.
     install(AutoHeadResponse)
-    install(ContentNegotiation) {
-        json(ContractJson)
-    }
     install(StatusPages) {
         problems()
     }
@@ -86,6 +86,8 @@ internal fun Application.module(api: Api) {
  * What a failed call answers when no route wrote the answer itself.
  *
  * - A rule of the contract a route found broken ([ProblemException]) is answered as the route said.
+ * - A call that met the database gone, or found no free connection in time, is `503 SERVICE_UNAVAILABLE` with
+ *   `Retry-After`, as the app's in-app backend answers when it is unavailable.
  * - A request the server could not read (a body that is not JSON, or not the JSON of the operation) is
  *   `422 VALIDATION_FAILED`, as the app's in-app backend answers it. The text of the parser's complaint stays in
  *   the server.
@@ -96,18 +98,44 @@ internal fun Application.module(api: Api) {
  */
 private fun StatusPagesConfig.problems() {
     exception<ProblemException> { call, problem -> call.respondProblem(problem) }
+    // A call that met the database gone, or found no free connection in time, is not at fault and may come again.
+    exception<JdbiException> { call, cause ->
+        if (cause.isOutage()) {
+            call.application.environment.log
+                .warn("The database was not there for a call: {}", cause.cause?.message ?: cause.message)
+            call.response.header(ApiHeaders.RETRY_AFTER, "1")
+            call.respondProblem(HttpStatusCode.ServiceUnavailable, ProblemCode.SERVICE_UNAVAILABLE, "Service temporarily unavailable")
+        } else {
+            call.respondUnexpected(cause)
+        }
+    }
     exception<BadRequestException> { call, _ -> call.respondUnreadable() }
     exception<ContentTransformationException> { call, _ -> call.respondUnreadable() }
     exception<NotFoundException> { call, _ -> call.respondNotFound() }
     exception<Throwable> { call, cause ->
         // A cancelled request (the client went away, the server is stopping) is not a failure of the server.
         if (cause is CancellationException) throw cause
-        call.application.environment.log
-            .error("Unhandled failure", cause)
-        call.respondProblem(HttpStatusCode.InternalServerError, ProblemCode.INTERNAL, "Internal error")
+        call.respondUnexpected(cause)
     }
     unhandled { call -> call.respondNotFound() }
 }
+
+private suspend fun ApplicationCall.respondUnexpected(cause: Throwable) {
+    application.environment.log.error("Unhandled failure", cause)
+    respondProblem(HttpStatusCode.InternalServerError, ProblemCode.INTERNAL, "Internal error")
+}
+
+/**
+ * Whether a failed query failed because the database could not be reached: no free connection in time, a connection
+ * that broke (SQLSTATE class 08), the server shutting down or restarting (57P), or the database not there (3D000).
+ */
+private fun JdbiException.isOutage(): Boolean =
+    generateSequence<Throwable>(this) { it.cause }.any { cause ->
+        cause is SQLTransientConnectionException ||
+            (cause is SQLException && OUTAGE_STATES.any { cause.sqlState.orEmpty().startsWith(it) })
+    }
+
+private val OUTAGE_STATES = listOf("08", "57P", "3D000")
 
 private suspend fun ApplicationCall.respondUnreadable() =
     respondProblem(
