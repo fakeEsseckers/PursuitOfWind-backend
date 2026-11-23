@@ -31,8 +31,20 @@ class DatabaseConfigTest {
     }
 
     @Test
-    fun `a password keeps the characters a url has to escape`() {
-        assertEquals("p@ss:w/rd", DatabaseConfig.parse("postgresql://rider:p%40ss%3Aw%2Frd@db.internal/wind").password)
+    fun `characters a url has to escape come back as themselves, and go to the driver escaped`() {
+        val config = DatabaseConfig.parse("postgresql://ri%3Ader:p%40ss%3Aw%2Frd+1@db.internal/wind%2Bone%3F")
+
+        assertEquals("ri:der", config.user)
+        assertEquals("p@ss:w/rd+1", config.password)
+        assertEquals("wind+one?", config.name)
+        assertEquals("jdbc:postgresql://db.internal:5432/wind%2Bone%3F", config.jdbcUrl)
+    }
+
+    @Test
+    fun `the host is taken as written`() {
+        assertEquals("pow_db", DatabaseConfig.parse("postgresql://rider:secret@pow_db:5432/wind").host)
+        assertEquals("jdbc:postgresql://[::1]:6543/wind", DatabaseConfig.parse("postgresql://rider:secret@[::1]:6543/wind").jdbcUrl)
+        assertEquals("jdbc:postgresql://[::1]:5432/wind", DatabaseConfig.parse("postgresql://rider@[::1]/wind").jdbcUrl)
     }
 
     @Test
@@ -47,6 +59,10 @@ class DatabaseConfigTest {
                 "postgresql://rider:secret@db.internal/",
                 "postgresql://:secret@db.internal/wind",
                 "postgresql://rider:secret@db.internal/wind/extra",
+                "postgresql://rider:secret@db.internal:0/wind",
+                "postgresql://rider:secret@db.internal:99999/wind",
+                "postgresql://rider:secret@db.internal:port/wind",
+                "postgresql://rider:secret@one.internal:5432,two.internal:5432/wind",
                 "postgresql://rider:sec ret@db.internal/wind",
             )
 

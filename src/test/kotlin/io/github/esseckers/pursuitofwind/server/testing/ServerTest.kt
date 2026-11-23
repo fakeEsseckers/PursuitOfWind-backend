@@ -3,6 +3,7 @@ package io.github.esseckers.pursuitofwind.server.testing
 import io.github.esseckers.pursuitofwind.contract.ContractJson
 import io.github.esseckers.pursuitofwind.contract.ProblemDto
 import io.github.esseckers.pursuitofwind.server.db.Database
+import io.github.esseckers.pursuitofwind.server.db.DatabaseConfig
 import io.github.esseckers.pursuitofwind.server.module
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -15,11 +16,12 @@ import kotlin.test.assertEquals
 
 /**
  * Runs [test] against the whole server: real HTTP handling in memory, on a real database of its own with this
- * build's schema. [extra] adds what a test needs beside the server's own routes.
+ * build's schema. [extra] adds what a test needs beside the server's own routes; [test] is told where the database
+ * is, for the tests that are about the database itself.
  */
 internal fun serverTest(
     extra: Application.() -> Unit = {},
-    test: suspend ApplicationTestBuilder.(Database) -> Unit,
+    test: suspend ApplicationTestBuilder.(DatabaseConfig) -> Unit,
 ) = testApplication {
     TestPostgres.withDatabase { config ->
         Database(config).use { database ->
@@ -28,7 +30,7 @@ internal fun serverTest(
                 module(database)
                 extra()
             }
-            test(database)
+            test(config)
         }
     }
 }

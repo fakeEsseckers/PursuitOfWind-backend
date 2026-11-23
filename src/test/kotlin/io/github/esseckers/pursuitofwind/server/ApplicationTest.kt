@@ -3,6 +3,7 @@ package io.github.esseckers.pursuitofwind.server
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.contract.ProblemDto
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
+import io.github.esseckers.pursuitofwind.server.testing.TestPostgres
 import io.github.esseckers.pursuitofwind.server.testing.problem
 import io.github.esseckers.pursuitofwind.server.testing.serverTest
 import io.ktor.client.request.get
@@ -38,9 +39,9 @@ class ApplicationTest {
         }
 
     @Test
-    fun `health says so when the database does not answer`() =
+    fun `health says so when the database is gone`() =
         serverTest { database ->
-            database.close()
+            TestPostgres.drop(database)
 
             val response = client.get("/health")
 

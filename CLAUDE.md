@@ -45,8 +45,8 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 3. JSON is `ContractJson`. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s, with the status and title the client's in-app fake backend uses for the same case; an unexpected failure tells the client nothing about the inside.
 4. No secrets in the repository or the image. Tokens, passwords and addresses come from environment variables or CI secrets.
 5. Configuration is read once at start through `ServerConfig`; a wrong value stops the start and names the variable.
-6. Tests go through HTTP (`serverTest`), not around it, and on a real PostgreSQL (`TestPostgres`): no in-memory substitute, no mocked repository.
-7. The schema changes only through SQL migrations in `src/main/resources/db/migration`. A migration that has reached `main` is never edited; a new one is added.
+6. What the API does is tested through HTTP (`serverTest`), not around it, and on a real PostgreSQL (`TestPostgres`): no in-memory substitute, no mocked repository. Configuration and the database wrapper have tests of their own.
+7. The schema changes only through SQL migrations in `src/main/resources/db/migration`, in the server's own schema `pursuitofwind`. A migration that has reached `main` is never edited; a new one is added. A credential (an installation id, a token) is stored as its hash, never as itself.
 8. Verify library APIs and versions with official docs before using them. Versions live in `gradle/libs.versions.toml`; a library shared with the client (Ktor, kotlinx.serialization) keeps the client's version.
 9. Kite sizing and verdicts are decision support, not safety advice.
 

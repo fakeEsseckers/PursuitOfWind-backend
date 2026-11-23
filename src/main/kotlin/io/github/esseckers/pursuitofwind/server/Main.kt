@@ -2,23 +2,32 @@ package io.github.esseckers.pursuitofwind.server
 
 import io.github.esseckers.pursuitofwind.server.db.Database
 import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.netty.NettyApplicationEngine
+import org.flywaydb.core.api.FlywayException
 
 /** Starts the server with the configuration from the environment, and stays up until the process is stopped. */
 fun main() {
-    serve(ServerConfig.from(System.getenv()))
+    server(ServerConfig.from(System.getenv())).start(wait = true)
 }
 
 /**
- * Connects to the database, brings its schema to this build's version, then serves until the process is stopped.
- * A database that is not there, or a migration that fails, ends the process before it takes a request.
+ * The server, ready to start: connected to its database, with the schema at this build's version. A database that
+ * is not there, or a migration that fails, fails here, before a request is taken. Stopping the server lets go of
+ * the database.
  */
-internal fun serve(config: ServerConfig) {
+internal fun server(config: ServerConfig): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
     val database = Database(config.database)
-    database.migrate()
-    embeddedServer(Netty, port = config.port, host = "0.0.0.0") {
+    try {
+        database.migrate()
+    } catch (e: FlywayException) {
+        database.close()
+        throw e
+    }
+    return embeddedServer(Netty, port = config.port, host = "0.0.0.0") {
         monitor.subscribe(ApplicationStopped) { database.close() }
         module(database)
-    }.start(wait = true)
+    }
 }

@@ -54,7 +54,7 @@ The Android emulator reaches a server on the same machine at `http://10.0.2.2:80
 
 ## Tests
 
-Tests run on a real PostgreSQL ([ADR 0002](docs/adr/0002-postgresql-sql-migrations-and-tests-on-a-real-database.md)). They start one from binaries that come with the test dependencies, so a machine needs nothing installed, and give every test a new empty database. PostgreSQL refuses to run as root; on such a machine point the tests at a server of your own, whose user may create databases:
+Tests run on a real PostgreSQL ([ADR 0002](docs/adr/0002-postgresql-sql-migrations-and-tests-on-a-real-database.md)). They start one from binaries that come with the test dependencies, so a machine needs nothing installed, and give every test a new empty database. PostgreSQL refuses to run as root; on such a machine point the tests at a server of your own (PostgreSQL 13 or newer), whose user may create databases:
 
 ```bash
 TEST_DATABASE_URL=postgresql://user:password@localhost:5432/postgres ./gradlew test
@@ -69,7 +69,9 @@ Everything a deployment decides comes from environment variables. A value that i
 | `PORT` | the port to listen on | `8080` |
 | `DATABASE_URL` | the PostgreSQL to use, as hosts hand it out: `postgresql://user:password@host:5432/name` | required |
 
-The server connects at start and applies the migrations in `src/main/resources/db/migration`; a database that is not there, or a migration that fails, ends the process before it takes a request. `GET /health` answers `503` while the database does not answer.
+The server connects at start and applies the migrations in `src/main/resources/db/migration` to a schema of its own, `pursuitofwind`; a database that is not there, or a migration that fails, ends the process before it takes a request. A database that is only late is waited for, up to 30 seconds. The URL must be a direct connection to PostgreSQL, not a transaction-mode pooler.
+
+`GET /health` answers `503` while the database does not answer. Use it as a readiness check (whether to route requests here), not as a liveness check that restarts the server: a restart does not bring a database back.
 
 ## Image
 

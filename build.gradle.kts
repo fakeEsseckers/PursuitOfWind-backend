@@ -61,6 +61,8 @@ tasks.test {
     useJUnitPlatform()
     // Tests run in UTC whatever the machine's zone, as on CI.
     systemProperty("user.timezone", "UTC")
+    // Which PostgreSQL the tests ran on is part of what they proved: another one runs them again.
+    inputs.property("testDatabaseUrl", providers.environmentVariable("TEST_DATABASE_URL").orElse(""))
 }
 
 // The server for a developer's machine: it brings its own PostgreSQL, started from the binaries the tests use, so
