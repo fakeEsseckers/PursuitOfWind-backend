@@ -8,7 +8,7 @@ It implements the API the app already speaks. The contract (`api/openapi.yaml`),
 
 ## Status
 
-The first slice of the API on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), keeps crews that riders create and join by invite code, with their members and their feed of events (`/v1/crews`, `/v1/me/crews`), and the rides crew members offer each other, with their seats (`/v1/crews/{crewId}/rides`, `/v1/rides`), and answers every path it does not serve yet with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+The whole API of the contract, on its database: the process connects to PostgreSQL, brings the schema to its version, signs installations in (`POST /v1/auth/anonymous`, `POST /v1/auth/refresh`), keeps the rider's profile (`GET` and `PUT /v1/me/profile`), the catalog of spots and each rider's own list of them (`/v1/spots`, `/v1/me/spots`), gives each spot's hourly forecast per weather model (`GET /v1/spots/{spotId}/forecast`), keeps crews that riders create and join by invite code, with their members and their feed of events (`/v1/crews`, `/v1/me/crews`), and the rides crew members offer each other, with their seats (`/v1/crews/{crewId}/rides`, `/v1/rides`), takes the push token of a rider's device (`PUT /v1/me/push-token`), and answers every path the contract does not have with its problem body. Every operation of the contract is served; what is next is in the [roadmap](#roadmap).
 
 ## Weather data
 
@@ -108,6 +108,7 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 | `src/main/kotlin/.../server/spot` | the catalog of spots and the spots a rider follows: rules and tables |
 | `src/main/kotlin/.../server/crew` | crews, their members and the feed of what happened in a crew |
 | `src/main/kotlin/.../server/ride` | the rides of a crew and who has a seat in them |
+| `src/main/kotlin/.../server/device` | the push token of each rider's device |
 | `src/main/kotlin/.../server/forecast` | the source of forecasts (Open-Meteo) and the forecast kept per place |
 | `src/main/kotlin/.../server/db` | the connection pool and the migration runner |
 | `src/main/resources/db/migration` | the schema, as SQL migrations applied in order |
@@ -126,6 +127,6 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 - [x] Real forecasts: Open-Meteo adapter, a forecast kept per place, the endpoint
 - [x] Crews: creating one, joining by invite code, members, the event feed
 - [x] Rides and seats: offering, cancelling, taking and giving back a seat, each told in the crew's feed
-- [ ] Push token intake
+- [x] Push token intake: the token is kept, nothing is sent to it yet
 - [ ] Staging deployment, contract tests against it, debug builds of the app on it
 - [ ] Production environment; server-side window evaluation and push notifications

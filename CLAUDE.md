@@ -38,6 +38,7 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 | `profile/`, `spot/` | one package per slice of the contract, shaped the same way: `ProfileRules` / `SpotRules` (the contract's limits) and `Profiles` / `Spots` (the tables) |
 | `crew/` | `Crews` (crews and members; a change in a crew holds the crew's row), `CrewFeed` (what happened in a crew, in the order it happened), `People` (a user as others see them) and `CrewRules` (the contract's limits, invite codes) |
 | `ride/` | `Rides` (rides and who has a seat; a ride is read whole in one statement) and `RideRules` (the contract's rules for a ride's plan) |
+| `device/` | `PushTokens` (where each rider's device is reached with a push; nothing is sent yet) |
 | `forecast/` | `OpenMeteo` (the source, behind `ForecastSource`) and `Forecasts` (the forecast of a place, kept for an hour and shared by the spots there; what to do while the source fails) |
 | `db/` | `Database` (connection pool, migration runner, `transaction { handle -> }` and `read { handle -> }` for queries) and `DatabaseConfig` (`DATABASE_URL`) |
 | `src/main/resources/db/migration` | the schema: SQL migrations, applied in order at start |
