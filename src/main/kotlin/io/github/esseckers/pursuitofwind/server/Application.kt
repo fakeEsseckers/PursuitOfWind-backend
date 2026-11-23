@@ -3,6 +3,7 @@ package io.github.esseckers.pursuitofwind.server
 import io.github.esseckers.pursuitofwind.contract.ContractJson
 import io.github.esseckers.pursuitofwind.contract.ProblemCode
 import io.github.esseckers.pursuitofwind.server.api.respondProblem
+import io.github.esseckers.pursuitofwind.server.db.Database
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -35,7 +36,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * - Every failure is a problem body with a `code` ([problems]).
  * - Every request carries an id (`X-Request-Id`, taken from the request or made here) into the logs and the response.
  */
-internal fun Application.module() {
+internal fun Application.module(database: Database) {
     install(CallId) {
         header(HttpHeaders.XRequestId)
         generate { UUID.randomUUID().toString() }
@@ -57,9 +58,18 @@ internal fun Application.module() {
         problems()
     }
     routing {
-        // For the host's checks: the process is up and answering. Not part of the API contract.
+        // For the host's checks: the process is up and its database answers. Not part of the API contract.
         get(HEALTH_PATH) {
-            call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+            if (database.isUp()) {
+                call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+            } else {
+                call.respondProblem(
+                    HttpStatusCode.ServiceUnavailable,
+                    ProblemCode.SERVICE_UNAVAILABLE,
+                    "Service unavailable",
+                    "The database does not answer.",
+                )
+            }
         }
     }
 }

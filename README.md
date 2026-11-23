@@ -8,7 +8,7 @@ It implements the API the app already speaks. The contract (`api/openapi.yaml`),
 
 ## Status
 
-A running skeleton: the process starts, answers `GET /health`, and answers every other path with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
+A running skeleton on its database: the process connects to PostgreSQL, brings the schema to its version, answers `GET /health`, and answers every other path with the contract's problem body. The API arrives one slice of the contract at a time; see the [roadmap](#roadmap).
 
 ## Run it
 
@@ -29,10 +29,10 @@ You need JDK 21 and access to the two artifacts of the client repository. GitHub
   ./gradlew :shared:windengine:publishToMavenLocal :shared:contract:publishToMavenLocal -Ppursuitofwind.version=0.1.0
   ```
 
-Then start the server:
+Then start the server. `runDev` brings its own PostgreSQL, started from binaries that come with the build, so nothing has to be installed; its database is new at every start:
 
 ```bash
-./gradlew run
+./gradlew runDev
 ```
 
 ```bash
@@ -47,8 +47,17 @@ The Android emulator reaches a server on the same machine at `http://10.0.2.2:80
 ./scripts/check.sh        # what CI runs: ktlint, detekt, tests, the distribution
 ./gradlew test            # tests only
 ./gradlew ktlintFormat    # auto-fix formatting
-./gradlew run             # start the server on PORT (8080)
+./gradlew runDev          # start the server on its own embedded PostgreSQL, on PORT (8080)
+./gradlew run             # start the server on the database in DATABASE_URL
 ./gradlew installDist     # the distribution the image packages: build/install/server
+```
+
+## Tests
+
+Tests run on a real PostgreSQL ([ADR 0002](docs/adr/0002-postgresql-sql-migrations-and-tests-on-a-real-database.md)). They start one from binaries that come with the test dependencies, so a machine needs nothing installed, and give every test a new empty database. PostgreSQL refuses to run as root; on such a machine point the tests at a server of your own (PostgreSQL 13 or newer), whose user may create databases:
+
+```bash
+TEST_DATABASE_URL=postgresql://user:password@localhost:5432/postgres ./gradlew test
 ```
 
 ## Configuration
@@ -58,6 +67,11 @@ Everything a deployment decides comes from environment variables. A value that i
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `PORT` | the port to listen on | `8080` |
+| `DATABASE_URL` | the PostgreSQL to use, as hosts hand it out: `postgresql://user:password@host:5432/name` | required |
+
+The server connects at start and applies the migrations in `src/main/resources/db/migration` to a schema of its own, `pursuitofwind`; a database that is not there, or a migration that fails, ends the process before it takes a request. A database that is only late is waited for, up to 30 seconds. The URL must be a direct connection to PostgreSQL, not a transaction-mode pooler.
+
+`GET /health` answers `503` while the database does not answer. Use it as a readiness check (whether to route requests here), not as a liveness check that restarts the server: a restart does not bring a database back.
 
 ## Image
 
@@ -72,7 +86,7 @@ docker build --tag pursuitofwind-backend .
 ```
 
 ```bash
-docker run --rm --publish 8080:8080 pursuitofwind-backend
+docker run --rm --publish 8080:8080 --env DATABASE_URL=postgresql://user:password@host:5432/name pursuitofwind-backend
 ```
 
 The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_OPTS` in the `Dockerfile`); a host can set its own `JAVA_OPTS`.
@@ -83,14 +97,16 @@ The image gives the JVM up to 75% of the container's memory for its heap (`JAVA_
 | --- | --- |
 | `src/main/kotlin/.../server` | the application: start, configuration, what every route shares |
 | `src/main/kotlin/.../server/api` | the HTTP side of the contract: problem bodies now, routes as they arrive |
-| `src/test/kotlin` | tests through real HTTP handling in memory |
+| `src/main/kotlin/.../server/db` | the connection pool and the migration runner |
+| `src/main/resources/db/migration` | the schema, as SQL migrations applied in order |
+| `src/test/kotlin` | tests through real HTTP handling in memory, on a real PostgreSQL |
 | `gradle/libs.versions.toml` | versions, including the client release this server is built against |
 | `docs/adr` | architecture decisions |
 
 ## Roadmap
 
 - [x] Skeleton: Ktor, the client's artifacts, configuration, health, image, CI
-- [ ] PostgreSQL, schema and migrations
+- [x] PostgreSQL: connection pool, SQL migrations applied at start, tests on a real database
 - [ ] Contract tests against the `openapi.yaml` of the pinned client release
 - [ ] Sign-in and tokens, validation problems, `Idempotency-Key`
 - [ ] Profile and spots

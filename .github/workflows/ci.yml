@@ -1,6 +1,7 @@
 name: CI
 
-# Every pull request and every push to main: lint, tests, the distribution, and the image built from it and started.
+# Every pull request and every push to main: lint, tests, the distribution, and the image built from it and started
+# on a PostgreSQL.
 #
 # The engine and the contract are read from the client repository's GitHub Packages with the workflow's own token,
 # which is enough while those packages are public.
@@ -29,6 +30,20 @@ jobs:
     permissions:
       contents: read
       packages: read
+    services:
+      # For the last step only: the image needs a database to start. The tests bring their own PostgreSQL.
+      postgres:
+        image: postgres:17
+        env:
+          # A throwaway password for a database that lives as long as this job.
+          POSTGRES_PASSWORD: ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
 
@@ -49,7 +64,9 @@ jobs:
 
       - name: Start the image and ask for its health
         run: |
-          docker run --detach --name server --publish 8080:8080 pursuitofwind-backend:ci
+          docker run --detach --name server --network host \
+            --env DATABASE_URL=postgresql://postgres:ci-only@localhost:5432/postgres \
+            pursuitofwind-backend:ci
           for attempt in $(seq 1 30); do
             if curl --silent --fail http://localhost:8080/health; then
               exit 0

@@ -16,7 +16,8 @@ This file is the short operating manual. What is built and what is next: the roa
 ./scripts/check.sh        # what CI runs: ktlint, detekt, tests, the distribution
 ./gradlew test            # tests only
 ./gradlew ktlintFormat    # auto-fix formatting
-./gradlew run             # start the server on PORT (8080)
+./gradlew runDev          # start the server on its own embedded PostgreSQL, on PORT (8080)
+./gradlew run             # start the server on the database in DATABASE_URL
 ./gradlew installDist     # the distribution the image packages: build/install/server
 ```
 
@@ -33,7 +34,9 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 | `Main.kt`, `ServerConfig.kt` | the start, and the configuration read from environment variables |
 | `Application.kt` | `Application.module()`: what every route shares, and the routes |
 | `api/` | the HTTP side of the contract: problem bodies now, routes as they arrive |
-| `src/test/kotlin` | tests through `testApplication`, real HTTP handling in memory |
+| `db/` | `Database` (connection pool, migration runner) and `DatabaseConfig` (`DATABASE_URL`) |
+| `src/main/resources/db/migration` | the schema: SQL migrations, applied in order at start |
+| `src/test/kotlin` | tests through `testApplication` (`serverTest`), real HTTP handling in memory on a real PostgreSQL (`TestPostgres`) |
 
 ## Hard rules
 
@@ -42,9 +45,10 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 3. JSON is `ContractJson`. Every failed call answers with a problem body (`respondProblem`) whose `code` is one of the contract's `ProblemCode`s, with the status and title the client's in-app fake backend uses for the same case; an unexpected failure tells the client nothing about the inside.
 4. No secrets in the repository or the image. Tokens, passwords and addresses come from environment variables or CI secrets.
 5. Configuration is read once at start through `ServerConfig`; a wrong value stops the start and names the variable.
-6. Tests go through HTTP (`testApplication`), not around it.
-7. Verify library APIs and versions with official docs before using them. Versions live in `gradle/libs.versions.toml`; a library shared with the client (Ktor, kotlinx.serialization) keeps the client's version.
-8. Kite sizing and verdicts are decision support, not safety advice.
+6. What the API does is tested through HTTP (`serverTest`), not around it, and on a real PostgreSQL (`TestPostgres`): no in-memory substitute, no mocked repository. Configuration and the database wrapper have tests of their own.
+7. The schema changes only through SQL migrations in `src/main/resources/db/migration`, in the server's own schema `pursuitofwind`. A migration that has reached `main` is never edited; a new one is added. A credential (an installation id, a token) is stored as its hash, never as itself.
+8. Verify library APIs and versions with official docs before using them. Versions live in `gradle/libs.versions.toml`; a library shared with the client (Ktor, kotlinx.serialization) keeps the client's version.
+9. Kite sizing and verdicts are decision support, not safety advice.
 
 ## Workflow
 
@@ -52,5 +56,6 @@ Every change goes through a branch and a pull request; the owner reviews and mer
 
 ## Environment notes
 
-- Docker and a database server are not available in every development environment. What was not run locally is said so in the PR; CI builds and starts the image.
+- Docker is not available in every development environment. What was not run locally is said so in the PR; CI builds and starts the image.
+- Tests start their own PostgreSQL from bundled binaries. PostgreSQL refuses to run as root: in a container that runs as root, start a PostgreSQL server yourself and set `TEST_DATABASE_URL` (see `README.md`, Tests).
 - Never claim something was verified when it was not.
