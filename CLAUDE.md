@@ -52,7 +52,7 @@ One Gradle project, package `io.github.esseckers.pursuitofwind.server`:
 
 ## Workflow
 
-Every change goes through a branch and a pull request; the owner reviews and merges. Run `./scripts/check.sh` before every PR. Use Conventional Commits. Write an ADR in `docs/adr` for a decision a reviewer would ask "why this way?" about.
+Every change goes through a branch and a pull request; the owner reviews and merges. A merge to `main` that passes CI is deployed to the staging on Railway by the same job (ADR 0003), so `main` is always what the staging runs. Run `./scripts/check.sh` before every PR. Use Conventional Commits. Write an ADR in `docs/adr` for a decision a reviewer would ask "why this way?" about.
 
 ## Environment notes
 
